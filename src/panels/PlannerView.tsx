@@ -11,6 +11,7 @@ import { ScaffoldViewer3D } from '../canvas/renderers/ScaffoldViewer3D';
 // CONSTANTES METIER
 // ==========================================
 const HAUTEURS_PLANCHER = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12];
+const MOISE_LENGTHS = [0.73, 1.09, 1.40, 1.57, 2.07, 2.57, 3.07];
 
 const CATEGORY_ORDER = [
   'Poteaux', 'Moises', 'U (traverses)', 'Diagonales', 'Sapine',
@@ -567,29 +568,29 @@ function LayoutEditor({
         const popY = toSvgY(sr.z2) + 4;
         const popW = Math.max((sr.x2 - sr.x1) * sc, 160);
         return (
-          <foreignObject x={popX} y={popY} width={Math.max(popW, 210)} height={145} style={{ overflow: 'visible' }}>
+          <foreignObject x={popX} y={popY} width={Math.max(popW, 260)} height={155} style={{ overflow: 'visible' }}>
             <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-1.5 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-1.5">
-                <label className="text-[9px] text-[#888899] whitespace-nowrap">Long.</label>
-                <input type="range" min={0.30} max={3.00} step={0.01}
-                  value={sm.longueur}
-                  onChange={(e) => updateMailleLongueur(Number(e.target.value))}
-                  className="flex-1 h-1.5 accent-[#e8c840] cursor-pointer" />
-                <input type="number" min={0.30} max={3.00} step={0.01}
-                  value={sm.longueur}
-                  onChange={(e) => updateMailleLongueur(Math.min(3, Math.max(0.3, Number(e.target.value))))}
-                  className="bg-white/5 border border-white/10 rounded text-[10px] text-white/80 w-14 text-center py-1 outline-none" />
+              <div>
+                <label className="text-[9px] text-[#888899] block mb-1">Longueur</label>
+                <div className="flex flex-wrap gap-1">
+                  {MOISE_LENGTHS.map((l) => (
+                    <button key={`l-${l}`} onClick={() => updateMailleLongueur(l)}
+                      className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.longueur === l ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                      {l}m
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <label className="text-[9px] text-[#888899] whitespace-nowrap">Larg.</label>
-                <input type="range" min={0.30} max={3.00} step={0.01}
-                  value={sm.largeur}
-                  onChange={(e) => updateMailleLargeur(Number(e.target.value))}
-                  className="flex-1 h-1.5 accent-[#3b82f6] cursor-pointer" />
-                <input type="number" min={0.30} max={3.00} step={0.01}
-                  value={sm.largeur}
-                  onChange={(e) => updateMailleLargeur(Math.min(3, Math.max(0.3, Number(e.target.value))))}
-                  className="bg-white/5 border border-white/10 rounded text-[10px] text-white/80 w-14 text-center py-1 outline-none" />
+              <div>
+                <label className="text-[9px] text-[#888899] block mb-1">Largeur</label>
+                <div className="flex flex-wrap gap-1">
+                  {MOISE_LENGTHS.map((l) => (
+                    <button key={`w-${l}`} onClick={() => updateMailleLargeur(l)}
+                      className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                      {l}m
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
