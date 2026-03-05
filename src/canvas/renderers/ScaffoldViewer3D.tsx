@@ -235,8 +235,8 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         if (deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) openEdges.delete('xmax');
       }
 
-      // Acces exterieur = pas de GC/plinthes sur cette maille
-      if (m.accesExterieur) { openEdges.clear(); }
+      // Acces exterieur : cote acces aura portillon au lieu de GC
+      const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
 
       // 4 poteaux (dedupliques)
       addPoteau(r.x1, r.z1); addPoteau(r.x2, r.z1);
@@ -292,20 +292,116 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         // Plateforme : maille a vide = grise, sinon split trappe alternee
         els.push(<Platform key={key()} x={r.x1} y={py} z={r.z1} width={r.x2 - r.x1} depth={r.z2 - r.z1} isAccess={m.aVide} trapSide={m.aVide ? undefined : (li % 2 === 0 ? 'front' : 'back')} />);
 
-        // GC sur cotes ouverts
-        for (const gcH of [0.5, 1.0]) {
-          const gy = py + gcH;
-          if (openEdges.has('zmin')) els.push(<Tube key={key()} start={[r.x1, gy, r.z1]} end={[r.x2, gy, r.z1]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-          if (openEdges.has('zmax')) els.push(<Tube key={key()} start={[r.x1, gy, r.z2]} end={[r.x2, gy, r.z2]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-          if (openEdges.has('xmin')) els.push(<Tube key={key()} start={[r.x1, gy, r.z1]} end={[r.x1, gy, r.z2]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-          if (openEdges.has('xmax')) els.push(<Tube key={key()} start={[r.x2, gy, r.z1]} end={[r.x2, gy, r.z2]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-        }
+        // Determiner les niveaux avec acces
+        const accesMaxLevel = m.accesExterieur && m.accesExterieurPremierPalier ? (levels[0] || 2) : Infinity;
+        const isAccesLevel = accesSide && lh <= accesMaxLevel;
 
-        // Plinthes sur cotes ouverts
-        if (openEdges.has('zmin')) els.push(<ToeboardH key={key()} x1={r.x1} x2={r.x2} y={py} z={r.z1} />);
-        if (openEdges.has('zmax')) els.push(<ToeboardH key={key()} x1={r.x1} x2={r.x2} y={py} z={r.z2} />);
-        if (openEdges.has('xmin')) els.push(<ToeboardV key={key()} x={r.x1} y={py} z1={r.z1} z2={r.z2} />);
-        if (openEdges.has('xmax')) els.push(<ToeboardV key={key()} x={r.x2} y={py} z1={r.z1} z2={r.z2} />);
+        // GC sur cotes ouverts — portillon sur cote acces
+        for (const edge of ['zmin', 'zmax', 'xmin', 'xmax'] as const) {
+          if (!openEdges.has(edge)) continue;
+          const isAccesEdge = edge === accesSide && isAccesLevel;
+          for (const gcH of [0.5, 1.0]) {
+            const gy = py + gcH;
+            const color = isAccesEdge ? '#22aa44' : GOLD_COLOR; // vert = portillon
+            const radius = isAccesEdge ? GC_RADIUS * 1.2 : GC_RADIUS;
+            if (edge === 'zmin') els.push(<Tube key={key()} start={[r.x1, gy, r.z1]} end={[r.x2, gy, r.z1]} radius={radius} color={color} />);
+            if (edge === 'zmax') els.push(<Tube key={key()} start={[r.x1, gy, r.z2]} end={[r.x2, gy, r.z2]} radius={radius} color={color} />);
+            if (edge === 'xmin') els.push(<Tube key={key()} start={[r.x1, gy, r.z1]} end={[r.x1, gy, r.z2]} radius={radius} color={color} />);
+            if (edge === 'xmax') els.push(<Tube key={key()} start={[r.x2, gy, r.z1]} end={[r.x2, gy, r.z2]} radius={radius} color={color} />);
+          }
+          // Plinthe (pas sur cote acces aux niveaux acces)
+          if (!isAccesEdge) {
+            if (edge === 'zmin') els.push(<ToeboardH key={key()} x1={r.x1} x2={r.x2} y={py} z={r.z1} />);
+            if (edge === 'zmax') els.push(<ToeboardH key={key()} x1={r.x1} x2={r.x2} y={py} z={r.z2} />);
+            if (edge === 'xmin') els.push(<ToeboardV key={key()} x={r.x1} y={py} z1={r.z1} z2={r.z2} />);
+            if (edge === 'xmax') els.push(<ToeboardV key={key()} x={r.x2} y={py} z1={r.z1} z2={r.z2} />);
+          }
+        }
+      }
+    }
+
+    // --- CRINOLINE (echelle exterieure + arceaux + poteaux) ---
+    const CRINOLINE_COLOR = '#40a060';
+    const ARCEAU_COLOR = '#309050';
+    for (let mi = 0; mi < mailles.length; mi++) {
+      const m = mailles[mi];
+      if (!m.accesExterieur) continue;
+      const r = rects[mi];
+      const side = m.accesExterieurSide;
+      const crinoH = m.accesExterieurPremierPalier ? (levels[0] || 2) : topLevel;
+      const crinoTopY = jackH + crinoH;
+
+      // Position de la crinoline : au centre du cote, decalee vers l'exterieur
+      const offset = 0.45; // distance hors echaff
+      const ladderW = 0.40;
+      let cx: number, cz: number;
+      if (side === 'zmin') { cx = (r.x1 + r.x2) / 2; cz = r.z1 - offset; }
+      else if (side === 'zmax') { cx = (r.x1 + r.x2) / 2; cz = r.z2 + offset; }
+      else if (side === 'xmin') { cx = r.x1 - offset; cz = (r.z1 + r.z2) / 2; }
+      else { cx = r.x2 + offset; cz = (r.z1 + r.z2) / 2; }
+
+      const halfW = ladderW / 2;
+      const isXside = side === 'xmin' || side === 'xmax';
+
+      // 2 montants echelle
+      if (isXside) {
+        els.push(<Tube key={key()} start={[cx, 0, cz - halfW]} end={[cx, crinoTopY + 1, cz - halfW]} radius={0.018} color={CRINOLINE_COLOR} />);
+        els.push(<Tube key={key()} start={[cx, 0, cz + halfW]} end={[cx, crinoTopY + 1, cz + halfW]} radius={0.018} color={CRINOLINE_COLOR} />);
+      } else {
+        els.push(<Tube key={key()} start={[cx - halfW, 0, cz]} end={[cx - halfW, crinoTopY + 1, cz]} radius={0.018} color={CRINOLINE_COLOR} />);
+        els.push(<Tube key={key()} start={[cx + halfW, 0, cz]} end={[cx + halfW, crinoTopY + 1, cz]} radius={0.018} color={CRINOLINE_COLOR} />);
+      }
+
+      // Barreaux echelle
+      const rungSpacing = 0.28;
+      const nRungs = Math.floor((crinoTopY + 1) / rungSpacing);
+      for (let ri = 1; ri <= nRungs; ri++) {
+        const ry = ri * rungSpacing;
+        if (isXside) {
+          els.push(<Tube key={key()} start={[cx, ry, cz - halfW]} end={[cx, ry, cz + halfW]} radius={0.012} color={CRINOLINE_COLOR} />);
+        } else {
+          els.push(<Tube key={key()} start={[cx - halfW, ry, cz]} end={[cx + halfW, ry, cz]} radius={0.012} color={CRINOLINE_COLOR} />);
+        }
+      }
+
+      // Arceaux (demi-cercles de securite) tous les 0.70m a partir de 2.5m
+      const arceauR = 0.35;
+      for (let ay = 2.5; ay <= crinoTopY + 1; ay += 0.70) {
+        const nSeg = 8;
+        for (let si = 0; si < nSeg; si++) {
+          const a1 = (Math.PI * si) / nSeg;
+          const a2 = (Math.PI * (si + 1)) / nSeg;
+          if (isXside) {
+            const dx = side === 'xmin' ? -1 : 1;
+            const z1a = cz + Math.cos(a1) * arceauR;
+            const y1a = ay + Math.sin(a1) * arceauR;
+            const z2a = cz + Math.cos(a2) * arceauR;
+            const y2a = ay + Math.sin(a2) * arceauR;
+            els.push(<Tube key={key()} start={[cx + dx * 0.05, y1a, z1a]} end={[cx + dx * 0.05, y2a, z2a]} radius={0.010} color={ARCEAU_COLOR} />);
+          } else {
+            const dz = side === 'zmin' ? -1 : 1;
+            const x1a = cx + Math.cos(a1) * arceauR;
+            const y1a = ay + Math.sin(a1) * arceauR;
+            const x2a = cx + Math.cos(a2) * arceauR;
+            const y2a = ay + Math.sin(a2) * arceauR;
+            els.push(<Tube key={key()} start={[x1a, y1a, cz + dz * 0.05]} end={[x2a, y2a, cz + dz * 0.05]} radius={0.010} color={ARCEAU_COLOR} />);
+          }
+        }
+      }
+
+      // Moises de liaison crinoline → echaff (a chaque palier acces)
+      for (const lh of levels) {
+        if (lh > crinoH) break;
+        const my = jackH + lh;
+        if (isXside) {
+          const ex = side === 'xmin' ? r.x1 : r.x2;
+          els.push(<Tube key={key()} start={[ex, my, cz - halfW]} end={[cx, my, cz - halfW]} radius={TUBE_RADIUS} color={CRINOLINE_COLOR} />);
+          els.push(<Tube key={key()} start={[ex, my, cz + halfW]} end={[cx, my, cz + halfW]} radius={TUBE_RADIUS} color={CRINOLINE_COLOR} />);
+        } else {
+          const ez = side === 'zmin' ? r.z1 : r.z2;
+          els.push(<Tube key={key()} start={[cx - halfW, my, ez]} end={[cx - halfW, my, cz]} radius={TUBE_RADIUS} color={CRINOLINE_COLOR} />);
+          els.push(<Tube key={key()} start={[cx + halfW, my, ez]} end={[cx + halfW, my, cz]} radius={TUBE_RADIUS} color={CRINOLINE_COLOR} />);
+        }
       }
     }
 

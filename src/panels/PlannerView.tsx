@@ -15,13 +15,15 @@ const MOISE_LENGTHS = [0.73, 1.09, 1.40, 1.57, 2.07, 2.57, 3.07];
 
 const CATEGORY_ORDER = [
   'Poteaux', 'Moises', 'U (traverses)', 'Diagonales', 'Sapine',
-  'Plateformes', 'Plinthes', 'Consoles', 'Echelles',
+  'Plateformes', 'Plinthes', 'Consoles', 'Echelles', 'Acces exterieur',
   'Colliers', 'Tubes', 'Verins', 'Verins de base',
 ];
 
 // ==========================================
 // TYPES
 // ==========================================
+export type AccesSide = 'xmin' | 'xmax' | 'zmin' | 'zmax';
+
 export interface MailleConfig {
   id: string;
   longueur: number;
@@ -30,7 +32,9 @@ export interface MailleConfig {
   z: number;        // position Z en metres
   rotation: 0 | 90; // 0 = longueur sur X, 90 = longueur sur Z
   aVide: boolean;   // maille a vide = pas de plateforme/GC/plinthes
-  accesExterieur: boolean; // acces depuis l'exterieur = pas de GC/plinthes
+  accesExterieur: boolean;       // acces depuis l'exterieur avec crinoline
+  accesExterieurSide: AccesSide; // cote de l'acces
+  accesExterieurPremierPalier: boolean; // acces uniquement au premier palier
 }
 
 export interface DeportSides {
@@ -225,6 +229,11 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
 
   const gcByLen: Record<string, number> = {};
   let toeCount = 0;
+  let portillonCount = 0;
+  let crinolineCount = 0;
+  let crinolineArceaux = 0;
+  let crinolinePoteaux = 0;
+  let crinolineMoises = 0;
   for (const m of pc.mailles) {
     const r = getMailleRect(m);
     const open = getOpenEdges(r, rects);
@@ -235,9 +244,10 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
       if (pc.deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) open.delete('xmin');
       if (pc.deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) open.delete('xmax');
     }
-    // Acces exterieur = pas de GC/plinthes sur cette maille
-    if (m.accesExterieur) { open.clear(); }
-    const nbNiveaux = m.aVide ? 1 : levels.length; // vide = top seulement
+    // Acces exterieur : cote acces = portillon (remplace GC), autres cotes = GC normal
+    const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
+    const nbNiveaux = m.aVide ? 1 : levels.length;
+    const accesNiveaux = m.accesExterieur && m.accesExterieurPremierPalier ? 1 : nbNiveaux;
     for (const edge of open) {
       let edgeLen: number;
       if (edge === 'zmin' || edge === 'zmax') {
@@ -245,15 +255,44 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
       } else {
         edgeLen = closestLedger(Math.abs(r.z2 - r.z1));
       }
-      const k = `${edgeLen}`;
-      gcByLen[k] = (gcByLen[k] || 0) + nbNiveaux * 2; // x2 barres (0.5m + 1.0m)
-      toeCount += nbNiveaux;
+      if (edge === accesSide) {
+        // Cote acces : portillon remplace le GC
+        portillonCount += accesNiveaux;
+        // Niveaux restants (si pas premier palier only) : GC normal
+        const gcNiveaux = nbNiveaux - accesNiveaux;
+        if (gcNiveaux > 0) {
+          const k = `${edgeLen}`;
+          gcByLen[k] = (gcByLen[k] || 0) + gcNiveaux * 2;
+          toeCount += gcNiveaux;
+        }
+      } else {
+        const k = `${edgeLen}`;
+        gcByLen[k] = (gcByLen[k] || 0) + nbNiveaux * 2;
+        toeCount += nbNiveaux;
+      }
+    }
+    // Crinoline (echelle exterieure + arceaux + poteaux + moises)
+    if (m.accesExterieur) {
+      const crinoH = m.accesExterieurPremierPalier ? (levels[0] || 2) : pc.hauteurPlancher;
+      const nbSections = Math.ceil(crinoH / 2);
+      crinolineCount += 1; // 1 echelle crinoline
+      crinolineArceaux += nbSections * 3; // 3 arceaux par section de 2m
+      crinolinePoteaux += 2; // 2 poteaux porteurs
+      crinolineMoises += Math.ceil(crinoH / 2) + 1; // moises horizontales
     }
   }
   for (const [len, count] of Object.entries(gcByLen)) {
     items.push({ name: `Moise GC ${len}m`, category: 'Moises', count, unitWeight: Math.round(Number(len) * 3.5 * 10) / 10 });
   }
   if (toeCount > 0) items.push({ name: 'Plinthe', category: 'Plinthes', count: toeCount, unitWeight: 1.5 });
+  // Acces exterieur BOM
+  if (portillonCount > 0) items.push({ name: 'Portillon acces', category: 'Acces exterieur', count: portillonCount, unitWeight: 8.5 });
+  if (crinolineCount > 0) {
+    items.push({ name: 'Echelle crinoline 2m', category: 'Acces exterieur', count: crinolineCount * Math.ceil(pc.hauteurPlancher / 2), unitWeight: 12.0 });
+    items.push({ name: 'Arceau crinoline', category: 'Acces exterieur', count: crinolineArceaux, unitWeight: 3.2 });
+    items.push({ name: 'Poteau crinoline 2m', category: 'Acces exterieur', count: crinolinePoteaux, unitWeight: 7.3 });
+    items.push({ name: 'Moise crinoline', category: 'Acces exterieur', count: crinolineMoises, unitWeight: 3.5 });
+  }
 
   // --- SAPINE (contreventement au pied : poteaux + moises + diag + verins) ---
   if (needsSapine(pc)) {
@@ -538,11 +577,11 @@ function LayoutEditor({
               strokeWidth={isSel ? 2 : 1}
               className="cursor-move"
             />
-            {/* Indicateurs cotes ouverts (securises) — petits traits rouges */}
-            {openEdges.has('xmin') && <line x1={toSvgX(r.x1)} y1={toSvgY(r.z1) + 2} x2={toSvgX(r.x1)} y2={toSvgY(r.z2) - 2} stroke="#e8c840" strokeWidth={3} opacity={0.5} />}
-            {openEdges.has('xmax') && <line x1={toSvgX(r.x2)} y1={toSvgY(r.z1) + 2} x2={toSvgX(r.x2)} y2={toSvgY(r.z2) - 2} stroke="#e8c840" strokeWidth={3} opacity={0.5} />}
-            {openEdges.has('zmin') && <line x1={toSvgX(r.x1) + 2} y1={toSvgY(r.z1)} x2={toSvgX(r.x2) - 2} y2={toSvgY(r.z1)} stroke="#e8c840" strokeWidth={3} opacity={0.5} />}
-            {openEdges.has('zmax') && <line x1={toSvgX(r.x1) + 2} y1={toSvgY(r.z2)} x2={toSvgX(r.x2) - 2} y2={toSvgY(r.z2)} stroke="#e8c840" strokeWidth={3} opacity={0.5} />}
+            {/* Indicateurs cotes ouverts (securises) — traits or / vert si acces */}
+            {openEdges.has('xmin') && <line x1={toSvgX(r.x1)} y1={toSvgY(r.z1) + 2} x2={toSvgX(r.x1)} y2={toSvgY(r.z2) - 2} stroke={m.accesExterieur && m.accesExterieurSide === 'xmin' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
+            {openEdges.has('xmax') && <line x1={toSvgX(r.x2)} y1={toSvgY(r.z1) + 2} x2={toSvgX(r.x2)} y2={toSvgY(r.z2) - 2} stroke={m.accesExterieur && m.accesExterieurSide === 'xmax' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
+            {openEdges.has('zmin') && <line x1={toSvgX(r.x1) + 2} y1={toSvgY(r.z1)} x2={toSvgX(r.x2) - 2} y2={toSvgY(r.z1)} stroke={m.accesExterieur && m.accesExterieurSide === 'zmin' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
+            {openEdges.has('zmax') && <line x1={toSvgX(r.x1) + 2} y1={toSvgY(r.z2)} x2={toSvgX(r.x2) - 2} y2={toSvgY(r.z2)} stroke={m.accesExterieur && m.accesExterieurSide === 'zmax' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
             {/* Label */}
             <text
               x={toSvgX(r.x1) + w / 2} y={toSvgY(r.z1) + h / 2}
@@ -564,7 +603,7 @@ function LayoutEditor({
         const popY = toSvgY(sr.z2) + 4;
         const popW = Math.max((sr.x2 - sr.x1) * sc, 160);
         return (
-          <foreignObject x={popX} y={popY} width={Math.max(popW, 260)} height={170} style={{ overflow: 'visible' }}>
+          <foreignObject x={popX} y={popY} width={Math.max(popW, 270)} height={sm.accesExterieur ? 240 : 170} style={{ overflow: 'visible' }}>
             <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-1.5 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
               <div>
                 <label className="text-[9px] text-[#888899] block mb-1">Longueur</label>
@@ -588,14 +627,14 @@ function LayoutEditor({
                   ))}
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
                   <input type="checkbox" checked={sm.aVide}
                     onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, aVide: e.target.checked } : m) }))}
                     className="w-3.5 h-3.5 rounded accent-[#e8c840]" />
                   Vide
                 </label>
-                <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+                <label className="flex items-center gap-1.5 text-[10px] text-[#22c55e] cursor-pointer">
                   <input type="checkbox" checked={sm.accesExterieur}
                     onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, accesExterieur: e.target.checked } : m) }))}
                     className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
@@ -617,6 +656,25 @@ function LayoutEditor({
                   </button>
                 </div>
               </div>
+              {sm.accesExterieur && (
+                <div className="space-y-1.5 pt-1 border-t border-white/5">
+                  <label className="text-[9px] text-[#22c55e] block">Cote acces (crinoline + portillon)</label>
+                  <div className="flex gap-1">
+                    {([['zmin', 'Avant'], ['zmax', 'Arriere'], ['xmin', 'Gauche'], ['xmax', 'Droite']] as [AccesSide, string][]).map(([side, label]) => (
+                      <button key={side} onClick={() => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, accesExterieurSide: side } : m) }))}
+                        className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.accesExterieurSide === side ? 'bg-[#22c55e]/20 border border-[#22c55e]/50 text-[#22c55e]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+                    <input type="checkbox" checked={sm.accesExterieurPremierPalier}
+                      onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, accesExterieurPremierPalier: e.target.checked } : m) }))}
+                      className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
+                    Premier palier uniquement
+                  </label>
+                </div>
+              )}
             </div>
           </foreignObject>
         );
@@ -650,7 +708,7 @@ function ConfigPanel({
     const id = String(nextId.current++);
     setConfig(prev => ({
       ...prev,
-      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false }],
+      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false }],
     }));
     setSelected(id);
   };
@@ -995,8 +1053,8 @@ export function PlannerView() {
   const [config, setConfig] = useState<PlannerConfig>({
     hauteurPlancher: 6,
     mailles: [
-      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false },
-      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false },
+      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false },
+      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false },
     ],
     type: 'exterieur',
     deport: false,
