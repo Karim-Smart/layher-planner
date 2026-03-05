@@ -428,31 +428,24 @@ function LayoutEditor({
     return { x: bestX, z: bestZ };
   }, [rects, config.largeur]);
 
-  const handleMouseDown = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (e.detail === 2) {
-      // Double-clic : rotation
-      setConfig(prev => ({
-        ...prev,
-        mailles: prev.mailles.map(m => m.id === id ? { ...m, rotation: m.rotation === 0 ? 90 : 0 as 0 | 90 } : m),
-      }));
-      return;
-    }
-    setSelected(id);
+  // --- Helpers pour convertir client coords en SVG coords ---
+  const clientToSvg = (clientX: number, clientY: number) => {
     const svg = svgRef.current!;
     const pt = svg.createSVGPoint();
-    pt.x = e.clientX; pt.y = e.clientY;
-    const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    pt.x = clientX; pt.y = clientY;
+    return pt.matrixTransform(svg.getScreenCTM()!.inverse());
+  };
+
+  const startDrag = (clientX: number, clientY: number, id: string) => {
+    setSelected(id);
+    const svgPt = clientToSvg(clientX, clientY);
     const maille = config.mailles.find(m => m.id === id)!;
     setDragging({ id, startMx: toWorldX(svgPt.x), startMz: toWorldZ(svgPt.y), origX: maille.x, origZ: maille.z });
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const moveDrag = (clientX: number, clientY: number) => {
     if (!dragging) return;
-    const svg = svgRef.current!;
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX; pt.y = e.clientY;
-    const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    const svgPt = clientToSvg(clientX, clientY);
     const wx = toWorldX(svgPt.x);
     const wz = toWorldZ(svgPt.y);
     const dx = wx - dragging.startMx;
@@ -465,7 +458,36 @@ function LayoutEditor({
     }));
   };
 
+  const handleMouseDown = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (e.detail === 2) {
+      setConfig(prev => ({
+        ...prev,
+        mailles: prev.mailles.map(m => m.id === id ? { ...m, rotation: m.rotation === 0 ? 90 : 0 as 0 | 90 } : m),
+      }));
+      return;
+    }
+    startDrag(e.clientX, e.clientY, id);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => moveDrag(e.clientX, e.clientY);
   const handleMouseUp = () => setDragging(null);
+
+  // --- Touch events pour mobile ---
+  const handleTouchStart = (e: React.TouchEvent, id: string) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    startDrag(touch.clientX, touch.clientY, id);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!dragging) return;
+    e.preventDefault(); // empeche le scroll pendant le drag
+    const touch = e.touches[0];
+    moveDrag(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = () => setDragging(null);
 
   // Grille
   const gridLines: React.ReactElement[] = [];
@@ -489,6 +511,9 @@ function LayoutEditor({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
       onClick={() => { if (!dragging) setSelected(null); }}
     >
       {gridLines}
@@ -503,7 +528,7 @@ function LayoutEditor({
         const w = (r.x2 - r.x1) * sc;
         const h = (r.z2 - r.z1) * sc;
         return (
-          <g key={m.id} onMouseDown={(e) => handleMouseDown(e, m.id)}>
+          <g key={m.id} onMouseDown={(e) => handleMouseDown(e, m.id)} onTouchStart={(e) => handleTouchStart(e, m.id)}>
             <rect
               x={toSvgX(r.x1)} y={toSvgY(r.z1)} width={w} height={h}
               rx={3}
@@ -538,25 +563,42 @@ function LayoutEditor({
         const popY = toSvgY(sr.z2) + 4;
         const popW = Math.max((sr.x2 - sr.x1) * sc, 160);
         return (
-          <foreignObject x={popX} y={popY} width={popW} height={90} style={{ overflow: 'visible' }}>
-            <div className="bg-[#16161e] border border-white/10 rounded-lg p-2 space-y-1.5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <foreignObject x={popX} y={popY} width={Math.max(popW, 200)} height={120} style={{ overflow: 'visible' }}>
+            <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-2 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-1.5">
                 <label className="text-[9px] text-[#888899] whitespace-nowrap">Long.</label>
                 <input type="range" min={0.30} max={3.00} step={0.01}
                   value={sm.longueur}
                   onChange={(e) => updateMailleLongueur(Number(e.target.value))}
-                  className="flex-1 h-1 accent-[#e8c840] cursor-pointer" />
+                  className="flex-1 h-1.5 accent-[#e8c840] cursor-pointer" />
                 <input type="number" min={0.30} max={3.00} step={0.01}
                   value={sm.longueur}
                   onChange={(e) => updateMailleLongueur(Math.min(3, Math.max(0.3, Number(e.target.value))))}
-                  className="bg-white/5 border border-white/10 rounded text-[9px] text-white/80 w-12 text-center py-0.5 outline-none" />
+                  className="bg-white/5 border border-white/10 rounded text-[10px] text-white/80 w-14 text-center py-1 outline-none" />
               </div>
-              <label className="flex items-center gap-1.5 text-[9px] text-[#888899] cursor-pointer">
-                <input type="checkbox" checked={sm.aVide}
-                  onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, aVide: e.target.checked } : m) }))}
-                  className="w-3 h-3 rounded accent-[#e8c840]" />
-                Maille a vide
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+                  <input type="checkbox" checked={sm.aVide}
+                    onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, aVide: e.target.checked } : m) }))}
+                    className="w-3.5 h-3.5 rounded accent-[#e8c840]" />
+                  Vide
+                </label>
+                <div className="flex gap-1.5">
+                  <button onClick={() => {
+                    setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, rotation: m.rotation === 0 ? 90 : 0 as 0 | 90 } : m) }));
+                  }} className="p-1.5 rounded bg-white/5 border border-white/10 text-[#888899] hover:text-white/80 active:scale-90" title="Tourner">
+                    <RotateCw size={12} />
+                  </button>
+                  <button onClick={() => {
+                    if (config.mailles.length <= 1) return;
+                    setConfig(prev => ({ ...prev, mailles: prev.mailles.filter(m => m.id !== selected) }));
+                    setSelected(null);
+                  }} disabled={config.mailles.length <= 1}
+                    className="p-1.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-90 disabled:opacity-30" title="Supprimer">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
             </div>
           </foreignObject>
         );
