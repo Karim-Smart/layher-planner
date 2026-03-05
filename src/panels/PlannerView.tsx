@@ -30,6 +30,7 @@ export interface MailleConfig {
   z: number;        // position Z en metres
   rotation: 0 | 90; // 0 = longueur sur X, 90 = longueur sur Z
   aVide: boolean;   // maille a vide = pas de plateforme/GC/plinthes
+  accesExterieur: boolean; // acces depuis l'exterieur = pas de GC/plinthes
 }
 
 export interface DeportSides {
@@ -234,6 +235,8 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
       if (pc.deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) open.delete('xmin');
       if (pc.deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) open.delete('xmax');
     }
+    // Acces exterieur = pas de GC/plinthes sur cette maille
+    if (m.accesExterieur) { open.clear(); }
     const nbNiveaux = m.aVide ? 1 : levels.length; // vide = top seulement
     for (const edge of open) {
       let edgeLen: number;
@@ -266,56 +269,49 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     items.push({ name: 'Diagonale sapine', category: 'Sapine', count: 6, unitWeight: 5.5 });
   }
 
-  // --- DEPORT (detail piece par piece) ---
+  // --- DEPORT (detail piece par piece, par maille au bord) ---
   if (pc.deport && pc.deportLongueur > 0) {
     const dL = closestLedger(pc.deportLongueur);
     const nbEtages = pc.deportTousEtages ? levels.length : 1;
     const sides = pc.deportSides;
 
-    // Bornes globales de l'echafaudage
-    let gXmin = Infinity, gXmax = -Infinity, gZmin = Infinity, gZmax = -Infinity;
-    for (const r of rects) { gXmin = Math.min(gXmin, r.x1); gXmax = Math.max(gXmax, r.x2); gZmin = Math.min(gZmin, r.z1); gZmax = Math.max(gZmax, r.z2); }
-    const spanX = closestLedger(gXmax - gXmin); // longueur totale
-    const spanZ = closestLedger(gZmax - gZmin); // largeur totale
+    // Bornes globales
+    let dGXmin = Infinity, dGXmax = -Infinity, dGZmin = Infinity, dGZmax = -Infinity;
+    for (const r of rects) { dGXmin = Math.min(dGXmin, r.x1); dGXmax = Math.max(dGXmax, r.x2); dGZmin = Math.min(dGZmin, r.z1); dGZmax = Math.max(dGZmax, r.z2); }
 
-    // Compter les cotes actifs en largeur (zmin/zmax) et en longueur (xmin/xmax)
-    const largeurSides: string[] = [];
-    if (sides.zmin) largeurSides.push('zmin');
-    if (sides.zmax) largeurSides.push('zmax');
-    const longueurSides: string[] = [];
-    if (sides.xmin) longueurSides.push('xmin');
-    if (sides.xmax) longueurSides.push('xmax');
-
-    // Pour chaque cote largeur (zmin/zmax) : deport sur toute la longueur
-    for (const _s of largeurSides) {
-      const nbPoteauxBord = new Set(rects.map(r => r.x1.toFixed(3)).concat(rects.map(r => r.x2.toFixed(3)))).size;
-      // Equerres (moise + diag dessous)
-      items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
-      // Poteaux 1m au bout du deport
-      items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: 3.7 });
-      // Moise au bout (ferme le deport)
-      items.push({ name: `Moise bout ${closestLedger(spanX)}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanX) * 3.5 * 10) / 10 });
+    // Helper : pour chaque maille touchant un bord, generer le BOM du deport
+    const addDeportForMaille = (mLen: number, isXaxis: boolean) => {
+      const ml = closestLedger(mLen);
+      // 2 equerres (1 par poteau)
+      items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
+      // 2 poteaux 1m au bout
+      items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: 2 * nbEtages, unitWeight: 3.7 });
+      // Moise au bout
+      items.push({ name: `${isXaxis ? 'Moise' : 'U'} bout ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
       // Plateforme
-      items.push({ name: `Plateforme deport ${closestLedger(spanX)}x${dL}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanX) * dL * 10 * 10) / 10 });
-      // GC 3 cotes exterieurs (pas cote echaff) x 2 barres
-      items.push({ name: `Moise GC ${closestLedger(spanX)}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(closestLedger(spanX) * 3.5 * 10) / 10 });
+      items.push({ name: `Plateforme deport ${ml}x${dL}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * dL * 10 * 10) / 10 });
+      // GC 3 cotes ext x 2 barres
+      items.push({ name: `Moise GC ${ml}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
       items.push({ name: `Moise GC ${dL}m (deport retour)`, category: 'Moises', count: 2 * nbEtages * 2, unitWeight: Math.round(dL * 3.5 * 10) / 10 });
-      // Plinthes 3 cotes exterieurs
-      items.push({ name: `Plinthe ${closestLedger(spanX)}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanX) * 1.5 * 10) / 10 });
+      // Plinthes 3 cotes ext
+      items.push({ name: `Plinthe ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 1.5 * 10) / 10 });
       items.push({ name: `Plinthe ${dL}m (deport)`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 1.5 * 10) / 10 });
-    }
+    };
 
-    // Pour chaque cote longueur (xmin/xmax) : deport sur toute la largeur
-    for (const _s of longueurSides) {
-      const nbPoteauxBord = new Set(rects.map(r => r.z1.toFixed(3)).concat(rects.map(r => r.z2.toFixed(3)))).size;
-      items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
-      items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: 3.7 });
-      items.push({ name: `U bout ${closestLedger(spanZ)}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanZ) * 3.5 * 10) / 10 });
-      items.push({ name: `Plateforme deport ${dL}x${closestLedger(spanZ)}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(dL * closestLedger(spanZ) * 10 * 10) / 10 });
-      items.push({ name: `Moise GC ${closestLedger(spanZ)}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(closestLedger(spanZ) * 3.5 * 10) / 10 });
-      items.push({ name: `Moise GC ${dL}m (deport retour)`, category: 'Moises', count: 2 * nbEtages * 2, unitWeight: Math.round(dL * 3.5 * 10) / 10 });
-      items.push({ name: `Plinthe ${closestLedger(spanZ)}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanZ) * 1.5 * 10) / 10 });
-      items.push({ name: `Plinthe ${dL}m (deport)`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 1.5 * 10) / 10 });
+    const dEps = 0.02;
+    // zmin/zmax : deport par maille, longueur = maille en X
+    if (sides.zmin) {
+      for (const r of rects) { if (Math.abs(r.z1 - dGZmin) < dEps) addDeportForMaille(r.x2 - r.x1, true); }
+    }
+    if (sides.zmax) {
+      for (const r of rects) { if (Math.abs(r.z2 - dGZmax) < dEps) addDeportForMaille(r.x2 - r.x1, true); }
+    }
+    // xmin/xmax : deport par maille, longueur = maille en Z
+    if (sides.xmin) {
+      for (const r of rects) { if (Math.abs(r.x1 - dGXmin) < dEps) addDeportForMaille(r.z2 - r.z1, false); }
+    }
+    if (sides.xmax) {
+      for (const r of rects) { if (Math.abs(r.x2 - dGXmax) < dEps) addDeportForMaille(r.z2 - r.z1, false); }
     }
   }
 
@@ -554,7 +550,7 @@ function LayoutEditor({
               fill={isSel ? '#e8c840' : '#888899'}
               fontSize={10} fontWeight={600}
             >
-              {closestLedger(m.longueur)}m{m.aVide ? ' ∅' : ''}
+              {closestLedger(m.longueur)}m{m.aVide ? ' ∅' : ''}{m.accesExterieur ? ' ⇄' : ''}
             </text>
           </g>
         );
@@ -568,7 +564,7 @@ function LayoutEditor({
         const popY = toSvgY(sr.z2) + 4;
         const popW = Math.max((sr.x2 - sr.x1) * sc, 160);
         return (
-          <foreignObject x={popX} y={popY} width={Math.max(popW, 260)} height={155} style={{ overflow: 'visible' }}>
+          <foreignObject x={popX} y={popY} width={Math.max(popW, 260)} height={170} style={{ overflow: 'visible' }}>
             <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-1.5 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
               <div>
                 <label className="text-[9px] text-[#888899] block mb-1">Longueur</label>
@@ -598,6 +594,12 @@ function LayoutEditor({
                     onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, aVide: e.target.checked } : m) }))}
                     className="w-3.5 h-3.5 rounded accent-[#e8c840]" />
                   Vide
+                </label>
+                <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+                  <input type="checkbox" checked={sm.accesExterieur}
+                    onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, accesExterieur: e.target.checked } : m) }))}
+                    className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
+                  Acces ext.
                 </label>
                 <div className="flex gap-1.5">
                   <button onClick={() => {
@@ -648,7 +650,7 @@ function ConfigPanel({
     const id = String(nextId.current++);
     setConfig(prev => ({
       ...prev,
-      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false }],
+      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false }],
     }));
     setSelected(id);
   };
@@ -778,19 +780,14 @@ function ConfigPanel({
             </div>
             {config.deport && (
               <div className="mt-1.5 ml-2 space-y-1.5">
-                <label className="text-[10px] text-[#888899] block">Longueur deport : {config.deportLongueur}m</label>
-                <div className="flex items-center gap-2">
-                  <input type="range" min={0.30} max={3.00} step={0.01}
-                    value={config.deportLongueur}
-                    onChange={(e) => setConfig(p => ({ ...p, deportLongueur: Number(e.target.value) }))}
-                    className="flex-1 h-1.5 accent-[#3b82f6] cursor-pointer" />
-                  <input type="number" min={0.30} max={3.00} step={0.01}
-                    value={config.deportLongueur}
-                    onChange={(e) => {
-                      const v = Math.min(3, Math.max(0.3, Number(e.target.value)));
-                      setConfig(p => ({ ...p, deportLongueur: v }));
-                    }}
-                    className="neo-input w-16 text-[11px] text-center" />
+                <label className="text-[10px] text-[#888899] block mb-1">Longueur deport</label>
+                <div className="flex flex-wrap gap-1">
+                  {MOISE_LENGTHS.map((l) => (
+                    <button key={`d-${l}`} onClick={() => setConfig(p => ({ ...p, deportLongueur: l }))}
+                      className={`px-1.5 py-0.5 text-[10px] rounded transition-all ${config.deportLongueur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899] hover:border-white/20'}`}>
+                      {l}m
+                    </button>
+                  ))}
                 </div>
                 <label className="text-[10px] text-[#888899] block mt-1">Cotes</label>
                 <div className="grid grid-cols-2 gap-1">
@@ -998,8 +995,8 @@ export function PlannerView() {
   const [config, setConfig] = useState<PlannerConfig>({
     hauteurPlancher: 6,
     mailles: [
-      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false },
-      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false },
+      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false },
+      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false },
     ],
     type: 'exterieur',
     deport: false,

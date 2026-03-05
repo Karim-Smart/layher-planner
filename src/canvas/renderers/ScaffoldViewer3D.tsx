@@ -167,7 +167,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 
   const rects = useMemo(
     () => mailles.map(m => getMailleRect(m)),
-    [mailles, largeur],
+    [mailles],
   );
 
   // Centre de la scene
@@ -234,6 +234,9 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         if (deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) openEdges.delete('xmin');
         if (deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) openEdges.delete('xmax');
       }
+
+      // Acces exterieur = pas de GC/plinthes sur cette maille
+      if (m.accesExterieur) { openEdges.clear(); }
 
       // 4 poteaux (dedupliques)
       addPoteau(r.x1, r.z1); addPoteau(r.x2, r.z1);
@@ -481,14 +484,21 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         }
       };
 
-      const spanX = globalXmax - globalXmin;
-      const spanZ = globalZmax - globalZmin;
+      const dEps = 0.02;
 
-      // 4 côtés indépendants
-      if (deportSides.zmin) renderConsole(globalXmin, globalZmin, 0, -1, spanX, 0);
-      if (deportSides.zmax) renderConsole(globalXmin, globalZmax, 0, 1, spanX, 0);
-      if (deportSides.xmin) renderConsole(globalXmin, globalZmin, -1, 0, 0, spanZ);
-      if (deportSides.xmax) renderConsole(globalXmax, globalZmin, 1, 0, 0, spanZ);
+      // Rendu par maille au bord (pas en span global)
+      if (deportSides.zmin) {
+        for (const r of rects) { if (Math.abs(r.z1 - globalZmin) < dEps) renderConsole(r.x1, globalZmin, 0, -1, r.x2 - r.x1, 0); }
+      }
+      if (deportSides.zmax) {
+        for (const r of rects) { if (Math.abs(r.z2 - globalZmax) < dEps) renderConsole(r.x1, globalZmax, 0, 1, r.x2 - r.x1, 0); }
+      }
+      if (deportSides.xmin) {
+        for (const r of rects) { if (Math.abs(r.x1 - globalXmin) < dEps) renderConsole(globalXmin, r.z1, -1, 0, 0, r.z2 - r.z1); }
+      }
+      if (deportSides.xmax) {
+        for (const r of rects) { if (Math.abs(r.x2 - globalXmax) < dEps) renderConsole(globalXmax, r.z1, 1, 0, 0, r.z2 - r.z1); }
+      }
     }
 
     return els;
