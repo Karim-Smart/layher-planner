@@ -321,6 +321,17 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     items.push({ name: 'Poteau crinoline 2m', category: 'Acces exterieur', count: crinolinePoteaux, unitWeight: 7.3 });
     items.push({ name: 'Moise crinoline', category: 'Acces exterieur', count: crinolineMoises, unitWeight: 3.5 });
   }
+  // Colliers plinthe : 3 par niveau ou il y a un acces
+  const accesMailleCount = pc.mailles.filter(m => m.accesExterieur).length;
+  if (accesMailleCount > 0) {
+    const accesNiveauxTotal = pc.mailles.reduce((sum, m) => {
+      if (!m.accesExterieur) return sum;
+      return sum + (m.accesExterieurPremierPalier ? 1 : levels.length);
+    }, 0);
+    items.push({ name: 'Collier plinthe', category: 'Acces exterieur', count: accesNiveauxTotal * 3, unitWeight: 0.8 });
+  }
+  // Cales : 1 par verin (= 1 par poteau)
+  items.push({ name: 'Cale bois', category: 'Verins de base', count: nbPoteaux, unitWeight: 0.5 });
 
   // --- SAPINE (contreventement au pied : poteaux + moises + diag + verins) ---
   if (needsSapine(pc)) {
@@ -1114,7 +1125,7 @@ export function PlannerView() {
       { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false },
       { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false },
     ],
-    type: 'exterieur',
+    type: 'interieur',
     deport: false,
     deportLongueur: 0.73,
     deportSides: { zmin: false, zmax: false, xmin: false, xmax: false },
@@ -1131,9 +1142,9 @@ export function PlannerView() {
   const totalWeight = Math.round(bomItems.reduce((s, it) => s + it.count * it.unitWeight, 0) * 10) / 10;
 
   const tabs: { id: MobileTab; label: string }[] = [
-    { id: 'config', label: 'Config' },
+    { id: 'config', label: "Crée ton echaf'" },
     { id: '3d', label: '3D' },
-    { id: 'bom', label: 'BOM' },
+    { id: 'bom', label: 'Appro' },
   ];
 
   return (
@@ -1145,7 +1156,7 @@ export function PlannerView() {
             <Ruler size={14} className="text-[#e8c840]" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xs sm:text-sm font-semibold truncate">Planificateur</h1>
+            <h1 className="text-xs sm:text-sm font-semibold truncate">Orano echaf' belleville</h1>
             <p className="text-[8px] sm:text-[9px] text-[#555566] truncate">
               {config.mailles.length} maille{config.mailles.length > 1 ? 's' : ''}
               &bull; H{config.hauteurPlancher}m
