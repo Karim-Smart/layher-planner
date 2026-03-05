@@ -599,11 +599,17 @@ function LayoutEditor({
         const sm = config.mailles.find(m => m.id === selected);
         if (!sm) return null;
         const sr = getMailleRect(sm);
-        const popX = toSvgX(sr.x1);
-        const popY = toSvgY(sr.z2) + 4;
-        const popW = Math.max((sr.x2 - sr.x1) * sc, 160);
+        const popWanted = 270;
+        const popH = sm.accesExterieur ? 240 : 170;
+        // Positionner le popup pour qu'il reste visible
+        let popX = toSvgX(sr.x1);
+        let popY = toSvgY(sr.z2) + 4;
+        // Si deborde a droite, decaler a gauche
+        if (popX + popWanted > svgW) popX = Math.max(0, svgW - popWanted - 4);
+        // Si deborde en bas, mettre au-dessus de la maille
+        if (popY + popH > svgH) popY = Math.max(0, toSvgY(sr.z1) - popH - 4);
         return (
-          <foreignObject x={popX} y={popY} width={Math.max(popW, 270)} height={sm.accesExterieur ? 240 : 170} style={{ overflow: 'visible' }}>
+          <foreignObject x={popX} y={popY} width={popWanted} height={popH} style={{ overflow: 'visible' }}>
             <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-1.5 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
               <div>
                 <label className="text-[9px] text-[#888899] block mb-1">Longueur</label>
