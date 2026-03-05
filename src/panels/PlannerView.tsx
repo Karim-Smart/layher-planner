@@ -24,6 +24,7 @@ const CATEGORY_ORDER = [
 export interface MailleConfig {
   id: string;
   longueur: number;
+  largeur: number;  // profondeur de cette maille (m)
   x: number;        // position X en metres
   z: number;        // position Z en metres
   rotation: 0 | 90; // 0 = longueur sur X, 90 = longueur sur Z
@@ -39,7 +40,6 @@ export interface DeportSides {
 
 export interface PlannerConfig {
   hauteurPlancher: number;
-  largeur: number;
   mailles: MailleConfig[];
   type: 'interieur' | 'exterieur';
   deport: boolean;
@@ -53,7 +53,8 @@ export interface PlannerConfig {
 // Sapine (contreventement) necessaire quand : exterieur + H/L > 4
 // Nombre de niveaux de diagonales de sapine = ceil(hauteur / 4)
 export function needsSapine(pc: PlannerConfig): boolean {
-  return pc.type === 'exterieur' && pc.hauteurPlancher / Math.min(pc.largeur, ...pc.mailles.map(m => closestLedger(m.longueur))) > 4;
+  const minDim = Math.min(...pc.mailles.map(m => closestLedger(m.largeur)), ...pc.mailles.map(m => closestLedger(m.longueur)));
+  return pc.type === 'exterieur' && pc.hauteurPlancher / minDim > 4;
 }
 
 export function sapineLevels(pc: PlannerConfig): number {
@@ -69,9 +70,9 @@ export interface MailleRect {
   x2: number; z2: number;
 }
 
-export function getMailleRect(m: MailleConfig, largeur: number): MailleRect {
+export function getMailleRect(m: MailleConfig): MailleRect {
   const l = closestLedger(m.longueur);
-  const w = closestLedger(largeur);
+  const w = closestLedger(m.largeur);
   if (m.rotation === 0) {
     return { id: m.id, x1: m.x, z1: m.z, x2: m.x + l, z2: m.z + w };
   }
@@ -124,10 +125,9 @@ interface BOMItem {
 
 function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   const items: BOMItem[] = [];
-  const largeur = pc.largeur;
   const levels = computeLevels(pc.hauteurPlancher);
   const maxH = pc.hauteurPlancher + 1; // poteaux depassent de 1m
-  const rects = pc.mailles.map(m => getMailleRect(m, largeur));
+  const rects = pc.mailles.map(m => getMailleRect(m));
 
   // --- POTEAUX (dedupliques par position) ---
   const poteauSet = new Set<string>();
@@ -219,7 +219,7 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   const gcByLen: Record<string, number> = {};
   let toeCount = 0;
   for (const m of pc.mailles) {
-    const r = getMailleRect(m, largeur);
+    const r = getMailleRect(m);
     const open = getOpenEdges(r, rects);
     const nbNiveaux = m.aVide ? 1 : levels.length; // vide = top seulement
     for (const edge of open) {
@@ -247,7 +247,8 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     items.push({ name: 'Poteau 2m (sapine)', category: 'Sapine', count: 2 * nbSegSap, unitWeight: 7.3 });
     items.push({ name: 'Verin de base (sapine)', category: 'Sapine', count: 2, unitWeight: 4.0 });
     // Moises : 2 niveaux (base + 1er plancher) x 3 moises (2 en Z + 1 en X)
-    items.push({ name: 'Moise sapine', category: 'Sapine', count: 2 * 3, unitWeight: Math.round(closestLedger(largeur) * 3.5 * 10) / 10 });
+    const sapLargeur = pc.mailles[0]?.largeur || 0.73;
+    items.push({ name: 'Moise sapine', category: 'Sapine', count: 2 * 3, unitWeight: Math.round(closestLedger(sapLargeur) * 3.5 * 10) / 10 });
     // Diagonales : 2 en X (face avant) + 4 en Z (2 faces laterales) = 6
     items.push({ name: 'Diagonale sapine', category: 'Sapine', count: 6, unitWeight: 5.5 });
   }
@@ -352,13 +353,14 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 // 2D LAYOUT EDITOR (vue du dessus)
 // ==========================================
 function LayoutEditor({
-  config, setConfig, selected, setSelected, updateMailleLongueur,
+  config, setConfig, selected, setSelected, updateMailleLongueur, updateMailleLargeur,
 }: {
   config: PlannerConfig;
   setConfig: React.Dispatch<React.SetStateAction<PlannerConfig>>;
   selected: string | null;
   setSelected: (id: string | null) => void;
   updateMailleLongueur: (l: number) => void;
+  updateMailleLargeur: (l: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<{ id: string; startMx: number; startMz: number; origX: number; origZ: number } | null>(null);
@@ -368,8 +370,8 @@ function LayoutEditor({
   const PAD = 40; // padding en px
 
   const rects = useMemo(
-    () => config.mailles.map(m => ({ m, r: getMailleRect(m, config.largeur) })),
-    [config.mailles, config.largeur],
+    () => config.mailles.map(m => ({ m, r: getMailleRect(m) })),
+    [config.mailles],
   );
 
   // Bornes pour auto-scale
@@ -405,7 +407,7 @@ function LayoutEditor({
   // Snap aux bords des autres mailles
   const snapToEdges = useCallback((mx: number, mz: number, dragId: string, maille: MailleConfig) => {
     const l = closestLedger(maille.longueur);
-    const w = closestLedger(config.largeur);
+    const w = closestLedger(maille.largeur);
     const mw = maille.rotation === 0 ? l : w;
     const md = maille.rotation === 0 ? w : l;
     let bestX = snapVal(mx);
@@ -426,7 +428,7 @@ function LayoutEditor({
       }
     }
     return { x: bestX, z: bestZ };
-  }, [rects, config.largeur]);
+  }, [rects]);
 
   // --- Helpers pour convertir client coords en SVG coords ---
   const clientToSvg = (clientX: number, clientY: number) => {
@@ -558,13 +560,13 @@ function LayoutEditor({
       {selected && (() => {
         const sm = config.mailles.find(m => m.id === selected);
         if (!sm) return null;
-        const sr = getMailleRect(sm, config.largeur);
+        const sr = getMailleRect(sm);
         const popX = toSvgX(sr.x1);
         const popY = toSvgY(sr.z2) + 4;
         const popW = Math.max((sr.x2 - sr.x1) * sc, 160);
         return (
-          <foreignObject x={popX} y={popY} width={Math.max(popW, 200)} height={120} style={{ overflow: 'visible' }}>
-            <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-2 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+          <foreignObject x={popX} y={popY} width={Math.max(popW, 210)} height={145} style={{ overflow: 'visible' }}>
+            <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-1.5 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-1.5">
                 <label className="text-[9px] text-[#888899] whitespace-nowrap">Long.</label>
                 <input type="range" min={0.30} max={3.00} step={0.01}
@@ -574,6 +576,17 @@ function LayoutEditor({
                 <input type="number" min={0.30} max={3.00} step={0.01}
                   value={sm.longueur}
                   onChange={(e) => updateMailleLongueur(Math.min(3, Math.max(0.3, Number(e.target.value))))}
+                  className="bg-white/5 border border-white/10 rounded text-[10px] text-white/80 w-14 text-center py-1 outline-none" />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-[9px] text-[#888899] whitespace-nowrap">Larg.</label>
+                <input type="range" min={0.30} max={3.00} step={0.01}
+                  value={sm.largeur}
+                  onChange={(e) => updateMailleLargeur(Number(e.target.value))}
+                  className="flex-1 h-1.5 accent-[#3b82f6] cursor-pointer" />
+                <input type="number" min={0.30} max={3.00} step={0.01}
+                  value={sm.largeur}
+                  onChange={(e) => updateMailleLargeur(Math.min(3, Math.max(0.3, Number(e.target.value))))}
                   className="bg-white/5 border border-white/10 rounded text-[10px] text-white/80 w-14 text-center py-1 outline-none" />
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -626,13 +639,13 @@ function ConfigPanel({
 
   const addMaille = () => {
     const last = config.mailles[config.mailles.length - 1];
-    const lastRect = last ? getMailleRect(last, config.largeur) : null;
+    const lastRect = last ? getMailleRect(last) : null;
     const newX = lastRect ? lastRect.x2 : 0;
     const newZ = lastRect ? lastRect.z1 : 0;
     const id = String(nextId.current++);
     setConfig(prev => ({
       ...prev,
-      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, x: newX, z: newZ, rotation: 0, aVide: false }],
+      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false }],
     }));
     setSelected(id);
   };
@@ -656,6 +669,14 @@ function ConfigPanel({
     setConfig(prev => ({
       ...prev,
       mailles: prev.mailles.map(m => m.id === selected ? { ...m, longueur } : m),
+    }));
+  };
+
+  const updateMailleLargeur = (largeur: number) => {
+    if (!selected) return;
+    setConfig(prev => ({
+      ...prev,
+      mailles: prev.mailles.map(m => m.id === selected ? { ...m, largeur } : m),
     }));
   };
 
@@ -687,23 +708,6 @@ function ConfigPanel({
           </div>
         </div>
 
-        {/* Largeur */}
-        <div>
-          <label className="text-[11px] text-[#888899] block mb-1.5">Largeur (profondeur) : {config.largeur}m</label>
-          <div className="flex items-center gap-2">
-            <input type="range" min={0.30} max={3.00} step={0.01}
-              value={config.largeur}
-              onChange={(e) => setConfig(p => ({ ...p, largeur: Number(e.target.value) }))}
-              className="flex-1 h-1.5 accent-[#e8c840] cursor-pointer" />
-            <input type="number" min={0.30} max={3.00} step={0.01}
-              value={config.largeur}
-              onChange={(e) => {
-                const v = Math.min(3, Math.max(0.3, Number(e.target.value)));
-                setConfig(p => ({ ...p, largeur: v }));
-              }}
-              className="neo-input w-16 text-[11px] text-center" />
-          </div>
-        </div>
 
         {/* Layout editor */}
         <div>
@@ -727,7 +731,7 @@ function ConfigPanel({
             </div>
           </div>
 
-          <LayoutEditor config={config} setConfig={setConfig} selected={selected} setSelected={setSelected} updateMailleLongueur={updateMailleLongueur} />
+          <LayoutEditor config={config} setConfig={setConfig} selected={selected} setSelected={setSelected} updateMailleLongueur={updateMailleLongueur} updateMailleLargeur={updateMailleLargeur} />
 
           <p className="text-[9px] text-[#555566] mt-1">
             <Move size={9} className="inline mr-0.5" /> Clic pour options &bull; Glisser pour deplacer &bull; Double-clic pour tourner
@@ -990,10 +994,9 @@ export function PlannerView() {
 
   const [config, setConfig] = useState<PlannerConfig>({
     hauteurPlancher: 6,
-    largeur: 0.73,
     mailles: [
-      { id: 'a', longueur: 2.07, x: 0, z: 0, rotation: 0, aVide: false },
-      { id: 'b', longueur: 2.07, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false },
+      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false },
+      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false },
     ],
     type: 'exterieur',
     deport: false,

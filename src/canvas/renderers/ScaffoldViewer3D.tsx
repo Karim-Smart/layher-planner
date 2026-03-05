@@ -152,7 +152,7 @@ function Clamp({ x, y, z }: { x: number; y: number; z: number }) {
 // SCENE
 // ==========================================
 function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
-  const { hauteurPlancher, largeur, mailles, deport, deportLongueur, deportSides, deportTousEtages, verinage, echelle } = pc;
+  const { hauteurPlancher, mailles, deport, deportLongueur, deportSides, deportTousEtages, verinage, echelle } = pc;
   const maxH = hauteurPlancher + 1;
   const jackH = 0.40 + 0.15; // base jack 40cm + plate
 
@@ -166,7 +166,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
   const topLevel = levels[levels.length - 1] || hauteurPlancher;
 
   const rects = useMemo(
-    () => mailles.map(m => getMailleRect(m, largeur)),
+    () => mailles.map(m => getMailleRect(m)),
     [mailles, largeur],
   );
 
@@ -354,7 +354,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
     // diagonales qui montent du pied jusqu'au 2eme plancher
     if (needsSapine(pc) && rects.length > 0) {
       const r0 = rects[0];
-      const sapD = closestLedger(largeur); // profondeur sapine = largeur echaff
+      const sapD = closestLedger(mailles[0]?.largeur || 0.73); // profondeur sapine = largeur 1ere maille
       const level1 = levels[0] || 2; // 1er plancher
       const level2 = levels[1] || levels[0] + 2 || 4; // 2eme plancher
       const sapPoteauH = level1 + 1; // poteau sapine monte au 1er plancher + 1m
@@ -495,7 +495,7 @@ function Ground() {
 // ==========================================
 export function ScaffoldViewer3D({ plannerConfig }: { plannerConfig: PlannerConfig }) {
   const totalH = plannerConfig.hauteurPlancher + 1.55;
-  const rects = plannerConfig.mailles.map(m => getMailleRect(m, plannerConfig.largeur));
+  const rects = plannerConfig.mailles.map(m => getMailleRect(m));
   let maxSpan = 3;
   for (const r of rects) {
     maxSpan = Math.max(maxSpan, r.x2 - r.x1, r.z2 - r.z1);
