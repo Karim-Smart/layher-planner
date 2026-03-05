@@ -550,7 +550,7 @@ function LayoutEditor({
               fill={isSel ? '#e8c840' : '#888899'}
               fontSize={10} fontWeight={600}
             >
-              {closestLedger(m.longueur)}m{m.aVide ? ' ∅' : ''}{m.accesExterieur ? ' ⇄' : ''}
+              {closestLedger(m.longueur)}×{closestLedger(m.largeur)}{m.aVide ? ' ∅' : ''}{m.accesExterieur ? ' ⇄' : ''}
             </text>
           </g>
         );
@@ -578,7 +578,7 @@ function LayoutEditor({
                 </div>
               </div>
               <div>
-                <label className="text-[9px] text-[#888899] block mb-1">Largeur</label>
+                <label className="text-[9px] text-[#888899] block mb-1">Profondeur</label>
                 <div className="flex flex-wrap gap-1">
                   {MOISE_LENGTHS.map((l) => (
                     <button key={`w-${l}`} onClick={() => updateMailleLargeur(l)}
