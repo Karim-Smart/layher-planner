@@ -216,11 +216,23 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   // --- GC (= moises) et plinthes ---
   // Mailles pleines : GC a tous les niveaux sur cotes ouverts
   // Mailles a vide : GC uniquement au top (1 niveau) sur cotes ouverts
+  // Bornes globales pour detecter cotes deport
+  let gXmin = Infinity, gXmax = -Infinity, gZmin = Infinity, gZmax = -Infinity;
+  for (const r of rects) { gXmin = Math.min(gXmin, r.x1); gXmax = Math.max(gXmax, r.x2); gZmin = Math.min(gZmin, r.z1); gZmax = Math.max(gZmax, r.z2); }
+  const eps = 0.02;
+
   const gcByLen: Record<string, number> = {};
   let toeCount = 0;
   for (const m of pc.mailles) {
     const r = getMailleRect(m);
     const open = getOpenEdges(r, rects);
+    // Retirer les cotes couverts par un deport (acces libre)
+    if (pc.deport && pc.deportLongueur > 0) {
+      if (pc.deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) open.delete('zmin');
+      if (pc.deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) open.delete('zmax');
+      if (pc.deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) open.delete('xmin');
+      if (pc.deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) open.delete('xmax');
+    }
     const nbNiveaux = m.aVide ? 1 : levels.length; // vide = top seulement
     for (const edge of open) {
       let edgeLen: number;

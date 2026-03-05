@@ -224,6 +224,17 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       const r = rects[mi];
       const openEdges = getOpenEdges(r, rects);
 
+      // Retirer les cotes couverts par un deport (pas de GC/plinthes cote deport = acces libre)
+      if (deport && deportLongueur > 0) {
+        let gXmin = Infinity, gXmax = -Infinity, gZmin = Infinity, gZmax = -Infinity;
+        for (const rr of rects) { gXmin = Math.min(gXmin, rr.x1); gXmax = Math.max(gXmax, rr.x2); gZmin = Math.min(gZmin, rr.z1); gZmax = Math.max(gZmax, rr.z2); }
+        const eps = 0.02;
+        if (deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) openEdges.delete('zmin');
+        if (deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) openEdges.delete('zmax');
+        if (deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) openEdges.delete('xmin');
+        if (deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) openEdges.delete('xmax');
+      }
+
       // 4 poteaux (dedupliques)
       addPoteau(r.x1, r.z1); addPoteau(r.x2, r.z1);
       addPoteau(r.x1, r.z2); addPoteau(r.x2, r.z2);
