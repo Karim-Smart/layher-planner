@@ -275,25 +275,19 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
 
     // Pour chaque cote largeur (zmin/zmax) : deport sur toute la longueur
     for (const _s of largeurSides) {
-      // Equerres : 1 par poteau sur ce cote (= nb poteaux en X sur ce bord)
       const nbPoteauxBord = new Set(rects.map(r => r.x1.toFixed(3)).concat(rects.map(r => r.x2.toFixed(3)))).size;
+      // Equerres (moise + diag dessous)
       items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
-      // Moises deport (en X, longueur du deport sur toute la facade)
-      // Nombre de moises = nombre de travees sur cette facade
-      const nbTraveesX = nbPoteauxBord - 1;
-      if (nbTraveesX > 0) {
-        items.push({ name: `Moise ${spanX / nbTraveesX > 0 ? closestLedger(spanX / nbTraveesX) : spanX}m (deport)`, category: 'Consoles', count: nbTraveesX * nbEtages, unitWeight: Math.round(closestLedger(spanX / Math.max(nbTraveesX, 1)) * 3.5 * 10) / 10 });
-      }
-      // U au bout du deport (en Z, longueur = deportLongueur)
-      items.push({ name: `U ${dL}m (deport)`, category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: Math.round(dL * 3.5 * 10) / 10 });
+      // Poteaux 1m au bout du deport
+      items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: 3.7 });
       // Moise au bout (ferme le deport)
       items.push({ name: `Moise bout ${closestLedger(spanX)}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanX) * 3.5 * 10) / 10 });
       // Plateforme
       items.push({ name: `Plateforme deport ${closestLedger(spanX)}x${dL}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanX) * dL * 10 * 10) / 10 });
-      // GC (moises) : 3 cotes ouverts (bout + 2 retours) x 2 barres (0.5m + 1.0m)
+      // GC 3 cotes exterieurs (pas cote echaff) x 2 barres
       items.push({ name: `Moise GC ${closestLedger(spanX)}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(closestLedger(spanX) * 3.5 * 10) / 10 });
       items.push({ name: `Moise GC ${dL}m (deport retour)`, category: 'Moises', count: 2 * nbEtages * 2, unitWeight: Math.round(dL * 3.5 * 10) / 10 });
-      // Plinthes : 3 cotes
+      // Plinthes 3 cotes exterieurs
       items.push({ name: `Plinthe ${closestLedger(spanX)}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanX) * 1.5 * 10) / 10 });
       items.push({ name: `Plinthe ${dL}m (deport)`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 1.5 * 10) / 10 });
     }
@@ -302,11 +296,7 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     for (const _s of longueurSides) {
       const nbPoteauxBord = new Set(rects.map(r => r.z1.toFixed(3)).concat(rects.map(r => r.z2.toFixed(3)))).size;
       items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
-      const nbTraveesZ = nbPoteauxBord - 1;
-      if (nbTraveesZ > 0) {
-        items.push({ name: `U ${closestLedger(spanZ / Math.max(nbTraveesZ, 1))}m (deport)`, category: 'Consoles', count: nbTraveesZ * nbEtages, unitWeight: Math.round(closestLedger(spanZ / Math.max(nbTraveesZ, 1)) * 3.5 * 10) / 10 });
-      }
-      items.push({ name: `Moise ${dL}m (deport)`, category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: Math.round(dL * 3.5 * 10) / 10 });
+      items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: nbPoteauxBord * nbEtages, unitWeight: 3.7 });
       items.push({ name: `U bout ${closestLedger(spanZ)}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(closestLedger(spanZ) * 3.5 * 10) / 10 });
       items.push({ name: `Plateforme deport ${dL}x${closestLedger(spanZ)}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(dL * closestLedger(spanZ) * 10 * 10) / 10 });
       items.push({ name: `Moise GC ${closestLedger(spanZ)}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(closestLedger(spanZ) * 3.5 * 10) / 10 });

@@ -409,6 +409,8 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 
       const deportLevels = deportTousEtages ? levels : [topLevel];
 
+      // Deport simplifie : equerres (moise + 2 diag dessous) + poteaux 1m au bout + moise bout + plateforme
+      // Pas de GC/plinthes cote echaff (acces libre), GC/plinthes sur 3 cotes exterieurs
       const renderConsole = (xBase: number, zBase: number, dx: number, dz: number, lenX: number, lenZ: number) => {
         for (const lh of deportLevels) {
           const cy = jackH + lh;
@@ -419,41 +421,51 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
           const isX = Math.abs(dx) > 0; // deport en X
 
           if (isX) {
-            // Equerres (face avant + arriere)
+            // Equerres : moise horizontale + diag dessous (face avant + arriere)
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xEnd, cy, zBase]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase, cy - 0.5, zBase]} end={[xEnd, cy, zBase]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xEnd, cy - 0.5, zBase]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zBase + lenZ]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase, cy - 0.5, zBase + lenZ]} end={[xEnd, cy, zBase + lenZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xBase, cy, zBase + lenZ]} end={[xEnd, cy - 0.5, zBase + lenZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            // Poteaux 1m au bout
+            els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy + 1, zBase]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
+            els.push(<Tube key={key()} start={[xEnd, cy, zBase + lenZ]} end={[xEnd, cy + 1, zBase + lenZ]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             // Moise au bout
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
             // Plateforme
             els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} />);
-            // Plinthes 3 cotes
-            els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase} />);
-            els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase + lenZ} />);
-            els.push(<ToeboardV key={key()} x={xEnd} y={cy} z1={zBase} z2={zBase + lenZ} />);
-            // GC 3 cotes
+            // GC sur 3 cotes exterieurs seulement (pas cote echaff)
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase]} end={[xMin + offset, cy + gcH, zBase]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase + lenZ]} end={[xMin + offset, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xEnd, cy + gcH, zBase]} end={[xEnd, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
             }
+            // Plinthes sur 3 cotes exterieurs
+            els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase} />);
+            els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase + lenZ} />);
+            els.push(<ToeboardV key={key()} x={xEnd} y={cy} z1={zBase} z2={zBase + lenZ} />);
           } else {
             // Deport en Z
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xBase, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase, cy - 0.5, zBase]} end={[xBase, cy, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xBase, cy - 0.5, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zBase]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase + lenX, cy - 0.5, zBase]} end={[xBase + lenX, cy, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xBase + lenX, cy, zBase]} end={[xBase + lenX, cy - 0.5, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            // Poteaux 1m au bout
+            els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
+            els.push(<Tube key={key()} start={[xBase + lenX, cy, zEnd]} end={[xBase + lenX, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
+            // Moise au bout
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
+            // Plateforme
             els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} />);
-            els.push(<ToeboardV key={key()} x={xBase} y={cy} z1={zMin} z2={zMin + offset} />);
-            els.push(<ToeboardV key={key()} x={xBase + lenX} y={cy} z1={zMin} z2={zMin + offset} />);
-            els.push(<ToeboardH key={key()} x1={xBase} x2={xBase + lenX} y={cy} z={zEnd} />);
+            // GC sur 3 cotes exterieurs (pas cote echaff)
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xBase, cy + gcH, zMin]} end={[xBase, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xBase + lenX, cy + gcH, zMin]} end={[xBase + lenX, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xBase, cy + gcH, zEnd]} end={[xBase + lenX, cy + gcH, zEnd]} radius={GC_RADIUS} color={GOLD_COLOR} />);
             }
+            // Plinthes sur 3 cotes exterieurs
+            els.push(<ToeboardV key={key()} x={xBase} y={cy} z1={zMin} z2={zMin + offset} />);
+            els.push(<ToeboardV key={key()} x={xBase + lenX} y={cy} z1={zMin} z2={zMin + offset} />);
+            els.push(<ToeboardH key={key()} x1={xBase} x2={xBase + lenX} y={cy} z={zEnd} />);
           }
         }
       };
