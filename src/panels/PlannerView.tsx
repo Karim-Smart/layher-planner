@@ -86,26 +86,57 @@ export function getMailleRect(m: MailleConfig): MailleRect {
 }
 
 // ==========================================
-// ADJACENCE — detecte les cotes ouverts
+// ADJACENCE — segments ouverts par cote
 // ==========================================
 type Edge = 'xmin' | 'xmax' | 'zmin' | 'zmax';
 
-function rangeOverlap(a1: number, a2: number, b1: number, b2: number): boolean {
-  const eps = 0.02;
-  return Math.min(a2, b2) - Math.max(a1, b1) > eps;
+export interface EdgeSegments {
+  xmin: [number, number][]; // segments le long de Z (z1..z2)
+  xmax: [number, number][];
+  zmin: [number, number][]; // segments le long de X (x1..x2)
+  zmax: [number, number][];
 }
 
-export function getOpenEdges(rect: MailleRect, allRects: MailleRect[]): Set<Edge> {
-  const open = new Set<Edge>(['xmin', 'xmax', 'zmin', 'zmax'] as Edge[]);
+function subtractRange(segments: [number, number][], cover: [number, number]): [number, number][] {
   const eps = 0.02;
+  const result: [number, number][] = [];
+  for (const [s, e] of segments) {
+    if (cover[1] <= s + eps || cover[0] >= e - eps) {
+      result.push([s, e]); // pas de chevauchement
+    } else {
+      if (cover[0] > s + eps) result.push([s, cover[0]]);
+      if (cover[1] < e - eps) result.push([cover[1], e]);
+    }
+  }
+  return result;
+}
+
+export function getOpenSegments(rect: MailleRect, allRects: MailleRect[]): EdgeSegments {
+  const eps = 0.02;
+  let xmin: [number, number][] = [[rect.z1, rect.z2]];
+  let xmax: [number, number][] = [[rect.z1, rect.z2]];
+  let zmin: [number, number][] = [[rect.x1, rect.x2]];
+  let zmax: [number, number][] = [[rect.x1, rect.x2]];
+
   for (const o of allRects) {
     if (o.id === rect.id) continue;
-    // xmin : un autre rect a son xmax = notre xmin, et z overlap
-    if (Math.abs(o.x2 - rect.x1) < eps && rangeOverlap(rect.z1, rect.z2, o.z1, o.z2)) open.delete('xmin');
-    if (Math.abs(o.x1 - rect.x2) < eps && rangeOverlap(rect.z1, rect.z2, o.z1, o.z2)) open.delete('xmax');
-    if (Math.abs(o.z2 - rect.z1) < eps && rangeOverlap(rect.x1, rect.x2, o.x1, o.x2)) open.delete('zmin');
-    if (Math.abs(o.z1 - rect.z2) < eps && rangeOverlap(rect.x1, rect.x2, o.x1, o.x2)) open.delete('zmax');
+    if (Math.abs(o.x2 - rect.x1) < eps) xmin = subtractRange(xmin, [o.z1, o.z2]);
+    if (Math.abs(o.x1 - rect.x2) < eps) xmax = subtractRange(xmax, [o.z1, o.z2]);
+    if (Math.abs(o.z2 - rect.z1) < eps) zmin = subtractRange(zmin, [o.x1, o.x2]);
+    if (Math.abs(o.z1 - rect.z2) < eps) zmax = subtractRange(zmax, [o.x1, o.x2]);
   }
+
+  return { xmin, xmax, zmin, zmax };
+}
+
+// Compat : retourne les cotes qui ont au moins 1 segment ouvert
+export function getOpenEdges(rect: MailleRect, allRects: MailleRect[]): Set<Edge> {
+  const segs = getOpenSegments(rect, allRects);
+  const open = new Set<Edge>();
+  if (segs.xmin.length > 0) open.add('xmin');
+  if (segs.xmax.length > 0) open.add('xmax');
+  if (segs.zmin.length > 0) open.add('zmin');
+  if (segs.zmax.length > 0) open.add('zmax');
   return open;
 }
 
@@ -236,49 +267,46 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   let crinolineMoises = 0;
   for (const m of pc.mailles) {
     const r = getMailleRect(m);
-    const open = getOpenEdges(r, rects);
+    const segs = getOpenSegments(r, rects);
     // Retirer les cotes couverts par un deport (acces libre)
     if (pc.deport && pc.deportLongueur > 0) {
-      if (pc.deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) open.delete('zmin');
-      if (pc.deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) open.delete('zmax');
-      if (pc.deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) open.delete('xmin');
-      if (pc.deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) open.delete('xmax');
+      if (pc.deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) segs.zmin = [];
+      if (pc.deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) segs.zmax = [];
+      if (pc.deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) segs.xmin = [];
+      if (pc.deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) segs.xmax = [];
     }
-    // Acces exterieur : cote acces = portillon (remplace GC), autres cotes = GC normal
     const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
     const nbNiveaux = m.aVide ? 1 : levels.length;
     const accesNiveaux = m.accesExterieur && m.accesExterieurPremierPalier ? 1 : nbNiveaux;
-    for (const edge of open) {
-      let edgeLen: number;
-      if (edge === 'zmin' || edge === 'zmax') {
-        edgeLen = closestLedger(Math.abs(r.x2 - r.x1));
-      } else {
-        edgeLen = closestLedger(Math.abs(r.z2 - r.z1));
-      }
-      if (edge === accesSide) {
-        // Cote acces : portillon remplace le GC
-        portillonCount += accesNiveaux;
-        // Niveaux restants (si pas premier palier only) : GC normal
-        const gcNiveaux = nbNiveaux - accesNiveaux;
-        if (gcNiveaux > 0) {
-          const k = `${edgeLen}`;
-          gcByLen[k] = (gcByLen[k] || 0) + gcNiveaux * 2;
-          toeCount += gcNiveaux;
+    // GC/plinthes par segment ouvert
+    for (const edge of ['zmin', 'zmax', 'xmin', 'xmax'] as Edge[]) {
+      const edgeSegs = segs[edge];
+      if (edgeSegs.length === 0) continue;
+      for (const [s, e] of edgeSegs) {
+        const segLen = closestLedger(e - s);
+        if (edge === accesSide) {
+          portillonCount += accesNiveaux;
+          const gcNiveaux = nbNiveaux - accesNiveaux;
+          if (gcNiveaux > 0) {
+            const k = `${segLen}`;
+            gcByLen[k] = (gcByLen[k] || 0) + gcNiveaux * 2;
+            toeCount += gcNiveaux;
+          }
+        } else {
+          const k = `${segLen}`;
+          gcByLen[k] = (gcByLen[k] || 0) + nbNiveaux * 2;
+          toeCount += nbNiveaux;
         }
-      } else {
-        const k = `${edgeLen}`;
-        gcByLen[k] = (gcByLen[k] || 0) + nbNiveaux * 2;
-        toeCount += nbNiveaux;
       }
     }
-    // Crinoline (echelle exterieure + arceaux + poteaux + moises)
+    // Crinoline
     if (m.accesExterieur) {
       const crinoH = m.accesExterieurPremierPalier ? (levels[0] || 2) : pc.hauteurPlancher;
       const nbSections = Math.ceil(crinoH / 2);
-      crinolineCount += 1; // 1 echelle crinoline
-      crinolineArceaux += nbSections * 3; // 3 arceaux par section de 2m
-      crinolinePoteaux += 2; // 2 poteaux porteurs
-      crinolineMoises += Math.ceil(crinoH / 2) + 1; // moises horizontales
+      crinolineCount += 1;
+      crinolineArceaux += nbSections * 3;
+      crinolinePoteaux += 2;
+      crinolineMoises += Math.ceil(crinoH / 2) + 1;
     }
   }
   for (const [len, count] of Object.entries(gcByLen)) {
@@ -587,9 +615,10 @@ function LayoutEditor({
       </defs>
       {rects.map(({ m, r }) => {
         const isSel = m.id === selected;
-        const openEdges = getOpenEdges(r, rects.map(rr => rr.r));
+        const edgeSegs = getOpenSegments(r, rects.map(rr => rr.r));
         const w = (r.x2 - r.x1) * sc;
         const h = (r.z2 - r.z1) * sc;
+        const acCol = (side: string) => m.accesExterieur && m.accesExterieurSide === side ? '#22c55e' : '#e8c840';
         return (
           <g key={m.id} onMouseDown={(e) => handleMouseDown(e, m.id)} onTouchStart={(e) => handleTouchStart(e, m.id)}>
             <rect
@@ -600,11 +629,11 @@ function LayoutEditor({
               strokeWidth={isSel ? 2 : 1}
               className="cursor-move"
             />
-            {/* Indicateurs cotes ouverts (securises) — traits or / vert si acces */}
-            {openEdges.has('xmin') && <line x1={toSvgX(r.x1)} y1={toSvgY(r.z1) + 2} x2={toSvgX(r.x1)} y2={toSvgY(r.z2) - 2} stroke={m.accesExterieur && m.accesExterieurSide === 'xmin' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
-            {openEdges.has('xmax') && <line x1={toSvgX(r.x2)} y1={toSvgY(r.z1) + 2} x2={toSvgX(r.x2)} y2={toSvgY(r.z2) - 2} stroke={m.accesExterieur && m.accesExterieurSide === 'xmax' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
-            {openEdges.has('zmin') && <line x1={toSvgX(r.x1) + 2} y1={toSvgY(r.z1)} x2={toSvgX(r.x2) - 2} y2={toSvgY(r.z1)} stroke={m.accesExterieur && m.accesExterieurSide === 'zmin' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
-            {openEdges.has('zmax') && <line x1={toSvgX(r.x1) + 2} y1={toSvgY(r.z2)} x2={toSvgX(r.x2) - 2} y2={toSvgY(r.z2)} stroke={m.accesExterieur && m.accesExterieurSide === 'zmax' ? '#22c55e' : '#e8c840'} strokeWidth={3} opacity={0.5} />}
+            {/* Indicateurs segments ouverts — traits or / vert si acces */}
+            {edgeSegs.xmin.map(([s, e], i) => <line key={`xmin-${i}`} x1={toSvgX(r.x1)} y1={toSvgY(s) + 2} x2={toSvgX(r.x1)} y2={toSvgY(e) - 2} stroke={acCol('xmin')} strokeWidth={3} opacity={0.5} />)}
+            {edgeSegs.xmax.map(([s, e], i) => <line key={`xmax-${i}`} x1={toSvgX(r.x2)} y1={toSvgY(s) + 2} x2={toSvgX(r.x2)} y2={toSvgY(e) - 2} stroke={acCol('xmax')} strokeWidth={3} opacity={0.5} />)}
+            {edgeSegs.zmin.map(([s, e], i) => <line key={`zmin-${i}`} x1={toSvgX(s) + 2} y1={toSvgY(r.z1)} x2={toSvgX(e) - 2} y2={toSvgY(r.z1)} stroke={acCol('zmin')} strokeWidth={3} opacity={0.5} />)}
+            {edgeSegs.zmax.map(([s, e], i) => <line key={`zmax-${i}`} x1={toSvgX(s) + 2} y1={toSvgY(r.z2)} x2={toSvgX(e) - 2} y2={toSvgY(r.z2)} stroke={acCol('zmax')} strokeWidth={3} opacity={0.5} />)}
             {/* Label */}
             <text
               x={toSvgX(r.x1) + w / 2} y={toSvgY(r.z1) + h / 2}

@@ -3,8 +3,8 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { closestLedger } from '../../engine/scaffoldGenerator';
-import type { PlannerConfig, MailleRect } from '../../panels/PlannerView';
-import { getMailleRect, getOpenEdges, needsSapine } from '../../panels/PlannerView';
+import type { PlannerConfig, MailleRect, EdgeSegments } from '../../panels/PlannerView';
+import { getMailleRect, getOpenSegments, needsSapine } from '../../panels/PlannerView';
 
 // ==========================================
 // MATERIAUX
@@ -222,20 +222,19 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
     for (let mi = 0; mi < mailles.length; mi++) {
       const m = mailles[mi];
       const r = rects[mi];
-      const openEdges = getOpenEdges(r, rects);
+      const segs = getOpenSegments(r, rects);
 
-      // Retirer les cotes couverts par un deport (pas de GC/plinthes cote deport = acces libre)
+      // Retirer les cotes couverts par un deport
       if (deport && deportLongueur > 0) {
         let gXmin = Infinity, gXmax = -Infinity, gZmin = Infinity, gZmax = -Infinity;
         for (const rr of rects) { gXmin = Math.min(gXmin, rr.x1); gXmax = Math.max(gXmax, rr.x2); gZmin = Math.min(gZmin, rr.z1); gZmax = Math.max(gZmax, rr.z2); }
         const eps = 0.02;
-        if (deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) openEdges.delete('zmin');
-        if (deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) openEdges.delete('zmax');
-        if (deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) openEdges.delete('xmin');
-        if (deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) openEdges.delete('xmax');
+        if (deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) segs.zmin = [];
+        if (deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) segs.zmax = [];
+        if (deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) segs.xmin = [];
+        if (deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) segs.xmax = [];
       }
 
-      // Acces exterieur : cote acces aura portillon au lieu de GC
       const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
 
       // 4 poteaux (dedupliques)
@@ -245,12 +244,10 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       // Moises/U a chaque hauteur (dedupliques)
       for (const mh of moiseHeights) {
         const y = jackH + mh;
-        // Moises en X (face zmin et zmax)
         const mk1 = `${r.x1.toFixed(3)},${r.x2.toFixed(3)},${r.z1.toFixed(3)},${mh.toFixed(3)}`;
         const mk2 = `${r.x1.toFixed(3)},${r.x2.toFixed(3)},${r.z2.toFixed(3)},${mh.toFixed(3)}`;
         if (!moiseDone.has(mk1)) { moiseDone.add(mk1); els.push(<Tube key={key()} start={[r.x1, y, r.z1]} end={[r.x2, y, r.z1]} radius={TUBE_RADIUS} color={STEEL_COLOR} />); }
         if (!moiseDone.has(mk2)) { moiseDone.add(mk2); els.push(<Tube key={key()} start={[r.x1, y, r.z2]} end={[r.x2, y, r.z2]} radius={TUBE_RADIUS} color={STEEL_COLOR} />); }
-        // U en Z (cote xmin et xmax)
         const uk1 = `${r.z1.toFixed(3)},${r.z2.toFixed(3)},${r.x1.toFixed(3)},${mh.toFixed(3)}`;
         const uk2 = `${r.z1.toFixed(3)},${r.z2.toFixed(3)},${r.x2.toFixed(3)},${mh.toFixed(3)}`;
         if (!uDone.has(uk1)) { uDone.add(uk1); els.push(<Tube key={key()} start={[r.x1, y, r.z1]} end={[r.x1, y, r.z2]} radius={TUBE_RADIUS} color={STEEL_COLOR} />); }
@@ -259,29 +256,22 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 
       // Diagonales
       if (m.aVide) {
-        // Maille a vide : diagonales sur les 4 cotes a chaque niveau
         let prevY = jackH;
         for (const lh of levels) {
           const topY = jackH + lh;
-          // Face zmin (en X)
           els.push(<Tube key={key()} start={[r.x1, prevY, r.z1]} end={[r.x2, topY, r.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-          // Face zmax (en X)
           els.push(<Tube key={key()} start={[r.x2, prevY, r.z2]} end={[r.x1, topY, r.z2]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-          // Face xmin (en Z)
           els.push(<Tube key={key()} start={[r.x1, prevY, r.z1]} end={[r.x1, topY, r.z2]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-          // Face xmax (en Z)
           els.push(<Tube key={key()} start={[r.x2, prevY, r.z2]} end={[r.x2, topY, r.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
           prevY = topY;
         }
       } else {
-        // Maille pleine : diagonale au premier niveau sur 2 faces
         const diagTop = levels[0] || 2;
         els.push(<Tube key={key()} start={[r.x1, jackH, r.z1]} end={[r.x2, jackH + diagTop, r.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
         els.push(<Tube key={key()} start={[r.x2, jackH, r.z2]} end={[r.x1, jackH + diagTop, r.z2]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
       }
 
-      // A chaque palier : plateforme + GC/plinthes
-      // Maille a vide : plateforme + GC + plinthes uniquement au top
+      // A chaque palier : plateforme + GC/plinthes par segment ouvert
       const isTopLevel = (lh: number) => lh === levels[levels.length - 1];
       for (let li = 0; li < levels.length; li++) {
         const lh = levels[li];
@@ -289,33 +279,43 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         const showFull = !m.aVide || isTopLevel(lh);
         if (!showFull) continue;
 
-        // Plateforme : maille a vide = grise, sinon split trappe alternee
         els.push(<Platform key={key()} x={r.x1} y={py} z={r.z1} width={r.x2 - r.x1} depth={r.z2 - r.z1} isAccess={m.aVide} trapSide={m.aVide ? undefined : (li % 2 === 0 ? 'front' : 'back')} />);
 
-        // Determiner les niveaux avec acces
         const accesMaxLevel = m.accesExterieur && m.accesExterieurPremierPalier ? (levels[0] || 2) : Infinity;
         const isAccesLevel = accesSide && lh <= accesMaxLevel;
 
-        // GC sur cotes ouverts — portillon sur cote acces
-        for (const edge of ['zmin', 'zmax', 'xmin', 'xmax'] as const) {
-          if (!openEdges.has(edge)) continue;
-          const isAccesEdge = edge === accesSide && isAccesLevel;
-          for (const gcH of [0.5, 1.0]) {
-            const gy = py + gcH;
-            const color = isAccesEdge ? '#22aa44' : GOLD_COLOR; // vert = portillon
-            const radius = isAccesEdge ? GC_RADIUS * 1.2 : GC_RADIUS;
-            if (edge === 'zmin') els.push(<Tube key={key()} start={[r.x1, gy, r.z1]} end={[r.x2, gy, r.z1]} radius={radius} color={color} />);
-            if (edge === 'zmax') els.push(<Tube key={key()} start={[r.x1, gy, r.z2]} end={[r.x2, gy, r.z2]} radius={radius} color={color} />);
-            if (edge === 'xmin') els.push(<Tube key={key()} start={[r.x1, gy, r.z1]} end={[r.x1, gy, r.z2]} radius={radius} color={color} />);
-            if (edge === 'xmax') els.push(<Tube key={key()} start={[r.x2, gy, r.z1]} end={[r.x2, gy, r.z2]} radius={radius} color={color} />);
-          }
-          // Plinthe (pas sur cote acces aux niveaux acces)
-          if (!isAccesEdge) {
-            if (edge === 'zmin') els.push(<ToeboardH key={key()} x1={r.x1} x2={r.x2} y={py} z={r.z1} />);
-            if (edge === 'zmax') els.push(<ToeboardH key={key()} x1={r.x1} x2={r.x2} y={py} z={r.z2} />);
-            if (edge === 'xmin') els.push(<ToeboardV key={key()} x={r.x1} y={py} z1={r.z1} z2={r.z2} />);
-            if (edge === 'xmax') els.push(<ToeboardV key={key()} x={r.x2} y={py} z1={r.z1} z2={r.z2} />);
-          }
+        // GC + plinthes par segment ouvert (pas par cote entier)
+        // zmin : segments le long de X
+        for (const [s, e] of segs.zmin) {
+          const isAcces = accesSide === 'zmin' && isAccesLevel;
+          const col = isAcces ? '#22aa44' : GOLD_COLOR;
+          const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[s, py + gcH, r.z1]} end={[e, py + gcH, r.z1]} radius={rad} color={col} />);
+          if (!isAcces) els.push(<ToeboardH key={key()} x1={s} x2={e} y={py} z={r.z1} />);
+        }
+        // zmax
+        for (const [s, e] of segs.zmax) {
+          const isAcces = accesSide === 'zmax' && isAccesLevel;
+          const col = isAcces ? '#22aa44' : GOLD_COLOR;
+          const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[s, py + gcH, r.z2]} end={[e, py + gcH, r.z2]} radius={rad} color={col} />);
+          if (!isAcces) els.push(<ToeboardH key={key()} x1={s} x2={e} y={py} z={r.z2} />);
+        }
+        // xmin : segments le long de Z
+        for (const [s, e] of segs.xmin) {
+          const isAcces = accesSide === 'xmin' && isAccesLevel;
+          const col = isAcces ? '#22aa44' : GOLD_COLOR;
+          const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[r.x1, py + gcH, s]} end={[r.x1, py + gcH, e]} radius={rad} color={col} />);
+          if (!isAcces) els.push(<ToeboardV key={key()} x={r.x1} y={py} z1={s} z2={e} />);
+        }
+        // xmax
+        for (const [s, e] of segs.xmax) {
+          const isAcces = accesSide === 'xmax' && isAccesLevel;
+          const col = isAcces ? '#22aa44' : GOLD_COLOR;
+          const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[r.x2, py + gcH, s]} end={[r.x2, py + gcH, e]} radius={rad} color={col} />);
+          if (!isAcces) els.push(<ToeboardV key={key()} x={r.x2} y={py} z1={s} z2={e} />);
         }
       }
     }
