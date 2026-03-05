@@ -338,19 +338,42 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     };
 
     const dEps = 0.02;
-    // zmin/zmax : deport par maille, longueur = maille en X
+    // Fusionner les mailles adjacentes en segments continus
+    const mergeRanges = (ranges: [number, number][]): [number, number][] => {
+      if (ranges.length === 0) return [];
+      const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+      const merged: [number, number][] = [sorted[0]];
+      for (let i = 1; i < sorted.length; i++) {
+        const last = merged[merged.length - 1];
+        if (sorted[i][0] <= last[1] + dEps) {
+          last[1] = Math.max(last[1], sorted[i][1]);
+        } else {
+          merged.push(sorted[i]);
+        }
+      }
+      return merged;
+    };
+    // zmin/zmax : fusionner en X
     if (sides.zmin) {
-      for (const r of rects) { if (Math.abs(r.z1 - dGZmin) < dEps) addDeportForMaille(r.x2 - r.x1, true); }
+      const ranges: [number, number][] = [];
+      for (const r of rects) { if (Math.abs(r.z1 - dGZmin) < dEps) ranges.push([r.x1, r.x2]); }
+      for (const [x1, x2] of mergeRanges(ranges)) addDeportForMaille(x2 - x1, true);
     }
     if (sides.zmax) {
-      for (const r of rects) { if (Math.abs(r.z2 - dGZmax) < dEps) addDeportForMaille(r.x2 - r.x1, true); }
+      const ranges: [number, number][] = [];
+      for (const r of rects) { if (Math.abs(r.z2 - dGZmax) < dEps) ranges.push([r.x1, r.x2]); }
+      for (const [x1, x2] of mergeRanges(ranges)) addDeportForMaille(x2 - x1, true);
     }
-    // xmin/xmax : deport par maille, longueur = maille en Z
+    // xmin/xmax : fusionner en Z
     if (sides.xmin) {
-      for (const r of rects) { if (Math.abs(r.x1 - dGXmin) < dEps) addDeportForMaille(r.z2 - r.z1, false); }
+      const ranges: [number, number][] = [];
+      for (const r of rects) { if (Math.abs(r.x1 - dGXmin) < dEps) ranges.push([r.z1, r.z2]); }
+      for (const [z1, z2] of mergeRanges(ranges)) addDeportForMaille(z2 - z1, false);
     }
     if (sides.xmax) {
-      for (const r of rects) { if (Math.abs(r.x2 - dGXmax) < dEps) addDeportForMaille(r.z2 - r.z1, false); }
+      const ranges: [number, number][] = [];
+      for (const r of rects) { if (Math.abs(r.x2 - dGXmax) < dEps) ranges.push([r.z1, r.z2]); }
+      for (const [z1, z2] of mergeRanges(ranges)) addDeportForMaille(z2 - z1, false);
     }
   }
 

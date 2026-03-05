@@ -582,18 +582,43 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 
       const dEps = 0.02;
 
-      // Rendu par maille au bord (pas en span global)
+      // Fusionner les segments adjacents pour un deport continu
+      const mergeRanges = (ranges: [number, number][]): [number, number][] => {
+        if (ranges.length === 0) return [];
+        const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+        const merged: [number, number][] = [sorted[0]];
+        for (let i = 1; i < sorted.length; i++) {
+          const last = merged[merged.length - 1];
+          if (sorted[i][0] <= last[1] + dEps) {
+            last[1] = Math.max(last[1], sorted[i][1]);
+          } else {
+            merged.push(sorted[i]);
+          }
+        }
+        return merged;
+      };
+
+      // zmin/zmax : fusionner les mailles en X, rendre un deport par segment continu
       if (deportSides.zmin) {
-        for (const r of rects) { if (Math.abs(r.z1 - globalZmin) < dEps) renderConsole(r.x1, globalZmin, 0, -1, r.x2 - r.x1, 0); }
+        const ranges: [number, number][] = [];
+        for (const r of rects) { if (Math.abs(r.z1 - globalZmin) < dEps) ranges.push([r.x1, r.x2]); }
+        for (const [x1, x2] of mergeRanges(ranges)) renderConsole(x1, globalZmin, 0, -1, x2 - x1, 0);
       }
       if (deportSides.zmax) {
-        for (const r of rects) { if (Math.abs(r.z2 - globalZmax) < dEps) renderConsole(r.x1, globalZmax, 0, 1, r.x2 - r.x1, 0); }
+        const ranges: [number, number][] = [];
+        for (const r of rects) { if (Math.abs(r.z2 - globalZmax) < dEps) ranges.push([r.x1, r.x2]); }
+        for (const [x1, x2] of mergeRanges(ranges)) renderConsole(x1, globalZmax, 0, 1, x2 - x1, 0);
       }
+      // xmin/xmax : fusionner les mailles en Z
       if (deportSides.xmin) {
-        for (const r of rects) { if (Math.abs(r.x1 - globalXmin) < dEps) renderConsole(globalXmin, r.z1, -1, 0, 0, r.z2 - r.z1); }
+        const ranges: [number, number][] = [];
+        for (const r of rects) { if (Math.abs(r.x1 - globalXmin) < dEps) ranges.push([r.z1, r.z2]); }
+        for (const [z1, z2] of mergeRanges(ranges)) renderConsole(globalXmin, z1, -1, 0, 0, z2 - z1);
       }
       if (deportSides.xmax) {
-        for (const r of rects) { if (Math.abs(r.x2 - globalXmax) < dEps) renderConsole(globalXmax, r.z1, 1, 0, 0, r.z2 - r.z1); }
+        const ranges: [number, number][] = [];
+        for (const r of rects) { if (Math.abs(r.x2 - globalXmax) < dEps) ranges.push([r.z1, r.z2]); }
+        for (const [z1, z2] of mergeRanges(ranges)) renderConsole(globalXmax, z1, 1, 0, 0, z2 - z1);
       }
     }
 
