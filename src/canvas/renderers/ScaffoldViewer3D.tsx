@@ -57,11 +57,15 @@ const PLATFORM_GREY = '#707880';
 const TRAP_BROWN = '#8B5E3C';
 const TRAP_HOLE_COLOR = '#3a3a3a';
 
-// Layher Allround : plateau 0.32m, trappe 0.64m
+// Layher Allround : plateau 0.32m, demi-plateau 0.19m, trappe 0.64m
 // Les plateaux couvrent tout l'espace (crochets sur moises), gaps visuels seulement
 const PLANK_NOMINAL = 0.32;
+const DEMI_NOMINAL = 0.19;
 const TRAP_NOMINAL = 0.64;
-const VIS_GAP = 0.01; // gap visuel entre planches
+const VIS_GAP = 0.01;
+const DEMI_COLOR = '#606870'; // gris légèrement plus foncé pour le demi
+// Largeurs qui nécessitent un demi-plateau au milieu
+const NEEDS_DEMI = [1.57, 2.57];
 
 function Platform({ x, y, z, width, depth, plankAxis, hasTrap }: {
   x: number; y: number; z: number; width: number; depth: number;
@@ -71,61 +75,79 @@ function Platform({ x, y, z, width, depth, plankAxis, hasTrap }: {
   const planks: React.ReactElement[] = [];
   let idx = 0;
 
-  // coverDim = dimension a couvrir transversalement, plankLen = longueur des planches
   const coverDim = plankAxis === 'x' ? depth : width;
   const plankLen = plankAxis === 'x' ? width : depth;
 
-  // Calculer la disposition : 1 trappe (0.64m) + N plateaux (0.32m) pour couvrir coverDim
+  // Déterminer si on a besoin d'un demi-plateau (largeurs 1.57m et 2.57m)
+  const closestCover = closestLedger(coverDim);
+  const needsDemi = NEEDS_DEMI.some(d => Math.abs(closestCover - d) < 0.05);
+
+  // Layout : trappe + N plateaux d'un côté + demi au milieu + N plateaux de l'autre
   const trapW = hasTrap ? TRAP_NOMINAL : 0;
-  const remaining = coverDim - trapW;
-  const nbPlateaux = Math.max(0, Math.round(remaining / PLANK_NOMINAL));
-  const totalNominal = trapW + nbPlateaux * PLANK_NOMINAL;
-  // Facteur d'échelle pour couvrir exactement la dimension
+  const demiW = needsDemi ? DEMI_NOMINAL : 0;
+  const remainingForPlateaux = coverDim - trapW - demiW;
+  const nbPlateaux = Math.max(0, Math.round(remainingForPlateaux / PLANK_NOMINAL));
+
+  // Scale pour couvrir exactement
+  const totalNominal = trapW + demiW + nbPlateaux * PLANK_NOMINAL;
   const scale = totalNominal > 0 ? coverDim / totalNominal : 1;
-  const actualTrapW = trapW * scale;
-  const actualPlankW = PLANK_NOMINAL * scale;
+  const aTrap = trapW * scale;
+  const aDemi = demiW * scale;
+  const aPlank = PLANK_NOMINAL * scale;
 
-  let offset = 0;
+  // Répartir : plateaux avant le milieu, demi au milieu, plateaux après
+  const halfPlateaux = Math.floor(nbPlateaux / 2);
+  const otherHalf = nbPlateaux - halfPlateaux;
 
-  // Trappe (marron + carré d'ouverture pour l'échelle)
-  if (hasTrap && actualTrapW > 0) {
-    const visW = actualTrapW - VIS_GAP;
-    const cx = plankAxis === 'x' ? x + plankLen / 2 : x + offset + actualTrapW / 2;
-    const cz = plankAxis === 'x' ? z + offset + actualTrapW / 2 : z + plankLen / 2;
+  // Helper pour ajouter une planche
+  const addPlank = (off: number, w: number, color: string) => {
+    const visW = w - VIS_GAP;
+    const cx = plankAxis === 'x' ? x + plankLen / 2 : x + off + w / 2;
+    const cz = plankAxis === 'x' ? z + off + w / 2 : z + plankLen / 2;
     const geoW = plankAxis === 'x' ? plankLen - 0.02 : visW;
     const geoD = plankAxis === 'x' ? visW : plankLen - 0.02;
-    // Trappe principale
     planks.push(
       <mesh key={idx++} position={[cx, y - t / 2, cz]}>
         <boxGeometry args={[geoW, t, geoD]} />
-        <meshStandardMaterial color={TRAP_BROWN} metalness={0.3} roughness={0.7} />
+        <meshStandardMaterial color={color} metalness={0.3} roughness={0.7} />
       </mesh>
     );
-    // Carré d'ouverture échelle (trou sombre sur la trappe)
-    const holeSize = Math.min(actualTrapW * 0.7, plankLen * 0.3);
+  };
+
+  let off = 0;
+
+  // Trappe (marron + carré d'ouverture échelle)
+  if (hasTrap && aTrap > 0) {
+    addPlank(off, aTrap, TRAP_BROWN);
+    // Carré d'ouverture
+    const holeSize = Math.min(aTrap * 0.7, plankLen * 0.3);
+    const cx = plankAxis === 'x' ? x + plankLen / 2 : x + off + aTrap / 2;
+    const cz = plankAxis === 'x' ? z + off + aTrap / 2 : z + plankLen / 2;
     planks.push(
       <mesh key={idx++} position={[cx, y - t / 2 + 0.005, cz]}>
         <boxGeometry args={[plankAxis === 'x' ? holeSize : holeSize * 0.9, 0.006, plankAxis === 'x' ? holeSize * 0.9 : holeSize]} />
         <meshStandardMaterial color={TRAP_HOLE_COLOR} metalness={0.1} roughness={0.9} />
       </mesh>
     );
-    offset += actualTrapW;
+    off += aTrap;
   }
 
-  // Plateaux gris
-  for (let i = 0; i < nbPlateaux; i++) {
-    const visW = actualPlankW - VIS_GAP;
-    const cx = plankAxis === 'x' ? x + plankLen / 2 : x + offset + actualPlankW / 2;
-    const cz = plankAxis === 'x' ? z + offset + actualPlankW / 2 : z + plankLen / 2;
-    const geoW = plankAxis === 'x' ? plankLen - 0.02 : visW;
-    const geoD = plankAxis === 'x' ? visW : plankLen - 0.02;
-    planks.push(
-      <mesh key={idx++} position={[cx, y - t / 2, cz]}>
-        <boxGeometry args={[geoW, t, geoD]} />
-        <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
-      </mesh>
-    );
-    offset += actualPlankW;
+  // Première moitié de plateaux
+  for (let i = 0; i < halfPlateaux; i++) {
+    addPlank(off, aPlank, PLATFORM_GREY);
+    off += aPlank;
+  }
+
+  // Demi-plateau au milieu
+  if (needsDemi && aDemi > 0) {
+    addPlank(off, aDemi, DEMI_COLOR);
+    off += aDemi;
+  }
+
+  // Deuxième moitié de plateaux
+  for (let i = 0; i < otherHalf; i++) {
+    addPlank(off, aPlank, PLATFORM_GREY);
+    off += aPlank;
   }
 
   return <group>{planks}</group>;

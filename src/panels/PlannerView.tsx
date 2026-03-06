@@ -252,30 +252,39 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   }
 
   // --- PLATEFORMES (plateau 0.32m + trappe 0.64m) ---
-  // Layher : plateaux couvrent tout l'espace (crochets sur moises)
+  // Layher : plateaux (0.32m) + demi-plateaux (0.19m, pour largeurs 1.57 et 2.57) + trappes (0.64m)
   const PLATEAU_W = 0.32;
+  const DEMI_W = 0.19;
   const TRAPPE_W = 0.64;
+  // Largeurs qui necessitent un demi-plateau au milieu
+  const NEEDS_DEMI = [1.57, 2.57];
+
   for (const m of pc.mailles) {
     const r = getMailleRect(m);
     const dimX = closestLedger(r.x2 - r.x1);
     const dimZ = closestLedger(r.z2 - r.z1);
-    // Sens de pose : "longueur" = plateaux le long de la longueur de la maille
-    const plankLen = m.plancherSens === 'longueur' ? dimX : dimZ; // longueur du plateau
-    const coverDim = m.plancherSens === 'longueur' ? dimZ : dimX; // dimension a couvrir
+    const plankLen = m.plancherSens === 'longueur' ? dimX : dimZ;
+    const coverDim = m.plancherSens === 'longueur' ? dimZ : dimX;
     const mLevels = computeLevelsFor(m.hauteurPlancher);
     const nbNiveaux = m.aVide ? 1 : mLevels.length;
+    const needsDemi = NEEDS_DEMI.includes(coverDim);
 
     if (pc.echelle && !m.aVide) {
-      // 1 trappe (0.64m) + plateaux pour couvrir le reste
-      const remaining = coverDim - TRAPPE_W;
+      const remaining = coverDim - TRAPPE_W - (needsDemi ? DEMI_W : 0);
       const nbPlateaux = Math.max(0, Math.round(remaining / PLATEAU_W));
       items.push({ name: `Trappe ${plankLen}×0.64m`, category: 'Plateformes', count: nbNiveaux, unitWeight: Math.round(plankLen * 4.5 * 10) / 10 });
+      if (needsDemi) {
+        items.push({ name: `Demi-plateau ${plankLen}×0.19m`, category: 'Plateformes', count: nbNiveaux, unitWeight: Math.round(plankLen * 0.9 * 10) / 10 });
+      }
       if (nbPlateaux > 0) {
         items.push({ name: `Plateau ${plankLen}×0.32m`, category: 'Plateformes', count: nbPlateaux * nbNiveaux, unitWeight: Math.round(plankLen * 1.5 * 10) / 10 });
       }
     } else {
-      // Tout en plateaux — couvrir tout l'espace
-      const nbPlateaux = Math.round(coverDim / PLATEAU_W);
+      const coverForPlateaux = coverDim - (needsDemi ? DEMI_W : 0);
+      const nbPlateaux = Math.round(coverForPlateaux / PLATEAU_W);
+      if (needsDemi) {
+        items.push({ name: `Demi-plateau ${plankLen}×0.19m`, category: 'Plateformes', count: nbNiveaux, unitWeight: Math.round(plankLen * 0.9 * 10) / 10 });
+      }
       if (nbPlateaux > 0) {
         items.push({ name: `Plateau ${plankLen}×0.32m`, category: 'Plateformes', count: nbPlateaux * nbNiveaux, unitWeight: Math.round(plankLen * 1.5 * 10) / 10 });
       }
@@ -410,7 +419,12 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
       // Plateaux du deport selon le sens choisi
       const depPlankLen = m.deportPlancherSens === 'longueur' ? ml : dL;
       const depCoverDim = m.deportPlancherSens === 'longueur' ? dL : ml;
-      const nbDepPlateaux = Math.round(depCoverDim / PLATEAU_W);
+      const depNeedsDemi = NEEDS_DEMI.includes(depCoverDim);
+      const depCoverForPlateaux = depCoverDim - (depNeedsDemi ? DEMI_W : 0);
+      const nbDepPlateaux = Math.round(depCoverForPlateaux / PLATEAU_W);
+      if (depNeedsDemi) {
+        items.push({ name: `Demi-plateau ${depPlankLen}×0.19m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(depPlankLen * 0.9 * 10) / 10 });
+      }
       if (nbDepPlateaux > 0) {
         items.push({ name: `Plateau ${depPlankLen}×0.32m (deport)`, category: 'Consoles', count: nbDepPlateaux * nbEtages, unitWeight: Math.round(depPlankLen * 1.5 * 10) / 10 });
       }
