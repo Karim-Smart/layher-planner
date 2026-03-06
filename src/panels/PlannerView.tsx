@@ -979,6 +979,29 @@ function CanvasPanel({ plannerConfig }: { plannerConfig: PlannerConfig }) {
 // ==========================================
 function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
+  // Ajustements manuels par nom de piece (key = item.name)
+  const [adjustments, setAdjustments] = useState<Record<string, number>>({});
+
+  const adjustCount = (name: string, delta: number) => {
+    setAdjustments(prev => {
+      const cur = prev[name] || 0;
+      const next = cur + delta;
+      if (next === 0) {
+        const { [name]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [name]: next };
+    });
+  };
+
+  // Appliquer les ajustements aux items
+  const adjustedItems = useMemo(() =>
+    bomItems.map(it => ({
+      ...it,
+      count: Math.max(0, it.count + (adjustments[it.name] || 0)),
+    })),
+    [bomItems, adjustments],
+  );
 
   const toggleCat = (cat: string) => {
     setCollapsedCats(prev => {
@@ -990,7 +1013,7 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
 
   const grouped = useMemo(() => {
     const map: Record<string, BOMItem[]> = {};
-    for (const item of bomItems) {
+    for (const item of adjustedItems) {
       if (!map[item.category]) map[item.category] = [];
       map[item.category].push(item);
     }
@@ -999,10 +1022,10 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
       const ib = CATEGORY_ORDER.indexOf(b);
       return (ia === -1 ? 50 : ia) - (ib === -1 ? 50 : ib);
     });
-  }, [bomItems]);
+  }, [adjustedItems]);
 
-  const totalPieces = bomItems.reduce((s, it) => s + it.count, 0);
-  const totalWeight = Math.round(bomItems.reduce((s, it) => s + it.count * it.unitWeight, 0) * 10) / 10;
+  const totalPieces = adjustedItems.reduce((s, it) => s + it.count, 0);
+  const totalWeight = Math.round(adjustedItems.reduce((s, it) => s + it.count * it.unitWeight, 0) * 10) / 10;
 
   const handleExportCSV = () => {
     const lines = ['Categorie;Piece;Quantite;Poids unitaire (kg);Poids total (kg)'];
@@ -1025,9 +1048,16 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
           <Package size={14} className="text-[#3b82f6]" />
           <span className="text-xs font-semibold">Feuille de calcul</span>
         </div>
-        <button onClick={handleExportCSV} className="glass-button text-[10px] py-1 px-2">
-          <Download size={11} /> CSV
-        </button>
+        <div className="flex items-center gap-2">
+          {Object.keys(adjustments).length > 0 && (
+            <button onClick={() => setAdjustments({})} className="glass-button text-[10px] py-1 px-2 text-orange-400">
+              Reset
+            </button>
+          )}
+          <button onClick={handleExportCSV} className="glass-button text-[10px] py-1 px-2">
+            <Download size={11} /> CSV
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -1035,9 +1065,9 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
           <thead>
             <tr className="sticky top-0 bg-[#0a0a0f] z-10">
               <th className="text-left px-4 py-2 text-[#888899] font-medium">Piece</th>
-              <th className="text-right px-2 py-2 text-[#888899] font-medium w-12">Qte</th>
-              <th className="text-right px-2 py-2 text-[#888899] font-medium w-16">kg/u</th>
-              <th className="text-right px-4 py-2 text-[#888899] font-medium w-16">kg</th>
+              <th className="text-center px-1 py-2 text-[#888899] font-medium w-20">Qte</th>
+              <th className="text-right px-2 py-2 text-[#888899] font-medium w-14">kg/u</th>
+              <th className="text-right px-4 py-2 text-[#888899] font-medium w-14">kg</th>
             </tr>
           </thead>
           <tbody>
@@ -1048,14 +1078,15 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
               return (
                 <CatGroup key={cat} cat={cat} items={items}
                   isCollapsed={isCollapsed} onToggle={() => toggleCat(cat)}
-                  catWeight={catWeight} catCount={catCount} />
+                  catWeight={catWeight} catCount={catCount}
+                  adjustments={adjustments} onAdjust={adjustCount} />
               );
             })}
           </tbody>
           <tfoot>
             <tr className="border-t border-white/8">
               <td className="px-4 py-2.5 font-semibold text-[12px]">Total</td>
-              <td className="text-right px-2 py-2.5 font-semibold text-[12px]">{totalPieces}</td>
+              <td className="text-center px-1 py-2.5 font-semibold text-[12px]">{totalPieces}</td>
               <td />
               <td className="text-right px-4 py-2.5 font-semibold text-[12px] text-[#e8c840]">{totalWeight} kg</td>
             </tr>
@@ -1066,9 +1097,10 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
   );
 }
 
-function CatGroup({ cat, items, isCollapsed, onToggle, catWeight, catCount }: {
+function CatGroup({ cat, items, isCollapsed, onToggle, catWeight, catCount, adjustments, onAdjust }: {
   cat: string; items: BOMItem[]; isCollapsed: boolean; onToggle: () => void;
   catWeight: number; catCount: number;
+  adjustments: Record<string, number>; onAdjust: (name: string, delta: number) => void;
 }) {
   return (
     <>
@@ -1079,18 +1111,34 @@ function CatGroup({ cat, items, isCollapsed, onToggle, catWeight, catCount }: {
             {cat}
           </span>
         </td>
-        <td className="text-right px-2 py-1.5 text-[10px] text-[#888899] font-medium">{catCount}</td>
+        <td className="text-center px-1 py-1.5 text-[10px] text-[#888899] font-medium">{catCount}</td>
         <td />
         <td className="text-right px-4 py-1.5 text-[10px] text-[#888899] font-medium">{catWeight}</td>
       </tr>
-      {!isCollapsed && items.map((it, i) => (
-        <tr key={`${it.name}-${i}`} className="hover:bg-white/[0.02] transition-colors">
-          <td className="pl-8 pr-2 py-1 text-white/60 truncate max-w-[180px]">{it.name}</td>
-          <td className="text-right px-2 py-1 tabular-nums font-medium">{it.count}</td>
-          <td className="text-right px-2 py-1 tabular-nums text-[#666677]">{it.unitWeight}</td>
-          <td className="text-right px-4 py-1 tabular-nums">{Math.round(it.count * it.unitWeight * 10) / 10}</td>
-        </tr>
-      ))}
+      {!isCollapsed && items.map((it, i) => {
+        const adj = adjustments[it.name] || 0;
+        return (
+          <tr key={`${it.name}-${i}`} className="hover:bg-white/[0.02] transition-colors group">
+            <td className="pl-8 pr-2 py-1 text-white/60 truncate max-w-[180px]">{it.name}</td>
+            <td className="text-center px-1 py-1">
+              <span className="inline-flex items-center gap-0.5">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onAdjust(it.name, -1); }}
+                  className="w-4 h-4 rounded text-[10px] leading-none bg-white/5 hover:bg-red-500/30 text-white/40 hover:text-red-300 transition-colors flex items-center justify-center"
+                  disabled={it.count <= 0}
+                >−</button>
+                <span className={`tabular-nums font-medium w-6 text-center text-[11px] ${adj !== 0 ? 'text-orange-400' : ''}`}>{it.count}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onAdjust(it.name, 1); }}
+                  className="w-4 h-4 rounded text-[10px] leading-none bg-white/5 hover:bg-green-500/30 text-white/40 hover:text-green-300 transition-colors flex items-center justify-center"
+                >+</button>
+              </span>
+            </td>
+            <td className="text-right px-2 py-1 tabular-nums text-[#666677]">{it.unitWeight}</td>
+            <td className="text-right px-4 py-1 tabular-nums">{Math.round(it.count * it.unitWeight * 10) / 10}</td>
+          </tr>
+        );
+      })}
     </>
   );
 }

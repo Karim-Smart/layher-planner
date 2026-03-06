@@ -555,7 +555,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy + 1, zBase]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase + lenZ]} end={[xEnd, cy + 1, zBase + lenZ]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} plankAxis={dm.deportPlancherSens === 'longueur' ? 'x' : 'z'} />);
+            els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} plankAxis={dm.deportPlancherSens === 'longueur' ? 'z' : 'x'} />);
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase]} end={[xMin + offset, cy + gcH, zBase]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase + lenZ]} end={[xMin + offset, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
@@ -572,7 +572,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zEnd]} end={[xBase + lenX, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} plankAxis={dm.deportPlancherSens === 'longueur' ? 'z' : 'x'} />);
+            els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} plankAxis={dm.deportPlancherSens === 'longueur' ? 'x' : 'z'} />);
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xBase, cy + gcH, zMin]} end={[xBase, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xBase + lenX, cy + gcH, zMin]} end={[xBase + lenX, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
