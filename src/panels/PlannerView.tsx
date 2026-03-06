@@ -272,12 +272,13 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   for (const m of pc.mailles) {
     const r = getMailleRect(m);
     const segs = getOpenSegments(r, rects);
-    // Retirer les cotes couverts par un deport (acces libre) — per maille
+    // Retirer les segments ouverts couverts par un deport (le deport a ses propres GC)
+    // On ne retire que les segments ouverts — les segments adjacents a d'autres mailles gardent leur GC
     if (m.deport && m.deportLongueur > 0) {
-      if (m.deportSides.zmin) segs.zmin = [];
-      if (m.deportSides.zmax) segs.zmax = [];
-      if (m.deportSides.xmin) segs.xmin = [];
-      if (m.deportSides.xmax) segs.xmax = [];
+      if (m.deportSides.zmin && segs.zmin.length > 0) segs.zmin = [];
+      if (m.deportSides.zmax && segs.zmax.length > 0) segs.zmax = [];
+      if (m.deportSides.xmin && segs.xmin.length > 0) segs.xmin = [];
+      if (m.deportSides.xmax && segs.xmax.length > 0) segs.xmax = [];
     }
     const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
     const nbNiveaux = m.aVide ? 1 : levels.length;

@@ -56,11 +56,46 @@ function Tube({ start, end, radius, color, metalness = 0.6, roughness = 0.35 }: 
 const PLATFORM_GREY = '#707880';
 const PLATFORM_ORANGE = '#d08030';
 
-function Platform({ x, y, z, width, depth, isAccess, trapSide }: {
+function Platform({ x, y, z, width, depth, isAccess, trapSide, isDeport }: {
   x: number; y: number; z: number; width: number; depth: number;
-  isAccess?: boolean; trapSide?: 'front' | 'back';
+  isAccess?: boolean; trapSide?: 'front' | 'back'; isDeport?: boolean;
 }) {
   const t = 0.04;
+  // Deport : planches grises de ~0.30m avec espaces visibles
+  if (isDeport) {
+    const plankW = 0.28;
+    const gap = 0.02;
+    const planks: React.ReactElement[] = [];
+    // Determiner l'axe principal (le plus long) pour poser les planches perpendiculairement
+    if (width >= depth) {
+      // Planches paralleles a Z, espaces le long de X
+      let px = x + 0.01;
+      let idx = 0;
+      while (px + plankW <= x + width + 0.001) {
+        planks.push(
+          <mesh key={idx++} position={[px + plankW / 2, y - t / 2, z + depth / 2]}>
+            <boxGeometry args={[plankW, t, depth - 0.02]} />
+            <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
+          </mesh>
+        );
+        px += plankW + gap;
+      }
+    } else {
+      // Planches paralleles a X, espaces le long de Z
+      let pz = z + 0.01;
+      let idx = 0;
+      while (pz + plankW <= z + depth + 0.001) {
+        planks.push(
+          <mesh key={idx++} position={[x + width / 2, y - t / 2, pz + plankW / 2]}>
+            <boxGeometry args={[width - 0.02, t, plankW]} />
+            <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
+          </mesh>
+        );
+        pz += plankW + gap;
+      }
+    }
+    return <group>{planks}</group>;
+  }
   // Maille a vide : tout gris
   if (isAccess) {
     return (
@@ -533,7 +568,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy + 1, zBase]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase + lenZ]} end={[xEnd, cy + 1, zBase + lenZ]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} />);
+            els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} isDeport />);
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase]} end={[xMin + offset, cy + gcH, zBase]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase + lenZ]} end={[xMin + offset, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
@@ -550,7 +585,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zEnd]} end={[xBase + lenX, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} />);
+            els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} isDeport />);
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xBase, cy + gcH, zMin]} end={[xBase, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xBase + lenX, cy + gcH, zMin]} end={[xBase + lenX, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
