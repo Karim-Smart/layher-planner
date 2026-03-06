@@ -33,6 +33,7 @@ export interface MailleConfig {
   x: number;        // position X en metres
   z: number;        // position Z en metres
   rotation: 0 | 90; // 0 = longueur sur X, 90 = longueur sur Z
+  hauteurPlancher: number; // hauteur max du plancher pour cette maille
   aVide: boolean;   // maille a vide = pas de plateforme/GC/plinthes
   plancherSens: PlancherSens; // sens de pose des plateaux/trappes
   accesExterieur: boolean;       // acces depuis l'exterieur avec crinoline
@@ -60,15 +61,29 @@ export interface PlannerConfig {
   echelle: boolean;
 }
 
+// Hauteur max globale (= max des mailles)
+function globalMaxH(pc: PlannerConfig): number {
+  return Math.max(...pc.mailles.map(m => m.hauteurPlancher), pc.hauteurPlancher);
+}
+
+// Niveaux (paliers) pour une hauteur donnee
+function computeLevelsFor(h: number): number[] {
+  const l: number[] = [];
+  for (let y = 2; y <= h; y += 2) l.push(y);
+  if (!l.includes(h)) l.push(h);
+  return l.sort((a, b) => a - b);
+}
+
 // Sapine (contreventement) necessaire quand : exterieur + H/L > 4
 // Nombre de niveaux de diagonales de sapine = ceil(hauteur / 4)
 export function needsSapine(pc: PlannerConfig): boolean {
   const minDim = Math.min(...pc.mailles.map(m => closestLedger(m.largeur)), ...pc.mailles.map(m => closestLedger(m.longueur)));
-  return pc.type === 'exterieur' && pc.hauteurPlancher / minDim > 4;
+  const maxH = globalMaxH(pc);
+  return pc.type === 'exterieur' && maxH / minDim > 4;
 }
 
 export function sapineLevels(pc: PlannerConfig): number {
-  return Math.ceil(pc.hauteurPlancher / 4);
+  return Math.ceil(globalMaxH(pc) / 4);
 }
 
 // ==========================================
@@ -147,13 +162,6 @@ export function getOpenEdges(rect: MailleRect, allRects: MailleRect[]): Set<Edge
 // ==========================================
 // NIVEAUX
 // ==========================================
-function computeLevels(hauteur: number): number[] {
-  const levels: number[] = [];
-  for (let h = 2; h <= hauteur; h += 2) levels.push(h);
-  if (!levels.includes(hauteur)) levels.push(hauteur);
-  return levels;
-}
-
 // ==========================================
 // BOM — calcul direct depuis PlannerConfig
 // ==========================================
@@ -166,46 +174,55 @@ interface BOMItem {
 
 function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   const items: BOMItem[] = [];
-  const levels = computeLevels(pc.hauteurPlancher);
-  const maxH = pc.hauteurPlancher + 1; // poteaux depassent de 1m
   const rects = pc.mailles.map(m => getMailleRect(m));
 
-  // --- POTEAUX (dedupliques par position) ---
-  const poteauSet = new Set<string>();
-  for (const r of rects) {
-    poteauSet.add(`${r.x1.toFixed(3)},${r.z1.toFixed(3)}`);
-    poteauSet.add(`${r.x2.toFixed(3)},${r.z1.toFixed(3)}`);
-    poteauSet.add(`${r.x1.toFixed(3)},${r.z2.toFixed(3)}`);
-    poteauSet.add(`${r.x2.toFixed(3)},${r.z2.toFixed(3)}`);
+  // --- POTEAUX (dedupliques par position, hauteur = max des mailles adjacentes) ---
+  const poteauMaxH: Record<string, number> = {};
+  for (let i = 0; i < pc.mailles.length; i++) {
+    const m = pc.mailles[i];
+    const r = rects[i];
+    const mH = m.hauteurPlancher + 1; // poteaux depassent de 1m
+    for (const corner of [`${r.x1.toFixed(3)},${r.z1.toFixed(3)}`, `${r.x2.toFixed(3)},${r.z1.toFixed(3)}`, `${r.x1.toFixed(3)},${r.z2.toFixed(3)}`, `${r.x2.toFixed(3)},${r.z2.toFixed(3)}`]) {
+      poteauMaxH[corner] = Math.max(poteauMaxH[corner] || 0, mH);
+    }
   }
-  const nbPoteaux = poteauSet.size;
+  const nbPoteaux = Object.keys(poteauMaxH).length;
 
-  // Segments par poteau : empilements de 2m + reste
-  const nbFull2m = Math.floor(maxH / 2);
-  const reste = maxH - nbFull2m * 2;
-  if (nbFull2m > 0) items.push({ name: 'Poteau 2m', category: 'Poteaux', count: nbPoteaux * nbFull2m, unitWeight: 7.3 });
-  if (reste > 0.01) items.push({ name: `Poteau ${Math.round(reste * 100) / 100}m`, category: 'Poteaux', count: nbPoteaux, unitWeight: Math.round(reste * 3.65 * 10) / 10 });
+  // Comptage segments par hauteur
+  const poteauByH: Record<string, number> = {};
+  for (const h of Object.values(poteauMaxH)) {
+    const nbFull2m = Math.floor(h / 2);
+    const reste = h - nbFull2m * 2;
+    poteauByH['2'] = (poteauByH['2'] || 0) + nbFull2m;
+    if (reste > 0.01) {
+      const rk = `${Math.round(reste * 100) / 100}`;
+      poteauByH[rk] = (poteauByH[rk] || 0) + 1;
+    }
+  }
+  for (const [len, count] of Object.entries(poteauByH)) {
+    items.push({ name: `Poteau ${len}m`, category: 'Poteaux', count, unitWeight: Math.round(Number(len) * 3.65 * 10) / 10 });
+  }
 
   // Verins de base
   items.push({ name: 'Verin de base 40cm', category: 'Verins de base', count: nbPoteaux, unitWeight: 4.0 });
 
-  // --- MOISES + U (dedupliques par position) ---
-  const intermH: number[] = [];
-  for (let h = 2; h < maxH - 0.1; h += 2) {
-    if (!levels.includes(h)) intermH.push(h);
-  }
-  const moiseHeights = [0, ...intermH, ...levels];
+  // --- MOISES + U (dedupliques par position, per-maille hauteurs) ---
+  const moiseSet = new Set<string>();
+  const uSet = new Set<string>();
 
-  // Deduplication : cle = "start_end_y" pour chaque moise/U
-  const moiseSet = new Set<string>(); // moises (en X = face)
-  const uSet = new Set<string>();     // U (en Z = traverses)
-
-  for (const r of rects) {
+  for (let i = 0; i < pc.mailles.length; i++) {
+    const m = pc.mailles[i];
+    const r = rects[i];
+    const mLevels = computeLevelsFor(m.hauteurPlancher);
+    const mMaxH = m.hauteurPlancher + 1;
+    const intermH: number[] = [];
+    for (let h = 2; h < mMaxH - 0.1; h += 2) {
+      if (!mLevels.includes(h)) intermH.push(h);
+    }
+    const moiseHeights = [0, ...intermH, ...mLevels];
     for (const mh of moiseHeights) {
-      // Moises en X (face zmin + zmax)
       moiseSet.add(`${r.x1.toFixed(3)},${r.x2.toFixed(3)},${r.z1.toFixed(3)},${mh.toFixed(3)}`);
       moiseSet.add(`${r.x1.toFixed(3)},${r.x2.toFixed(3)},${r.z2.toFixed(3)},${mh.toFixed(3)}`);
-      // U en Z (cote xmin + xmax)
       uSet.add(`${r.z1.toFixed(3)},${r.z2.toFixed(3)},${r.x1.toFixed(3)},${mh.toFixed(3)}`);
       uSet.add(`${r.z1.toFixed(3)},${r.z2.toFixed(3)},${r.x2.toFixed(3)},${mh.toFixed(3)}`);
     }
@@ -235,6 +252,7 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   }
 
   // --- PLATEFORMES (plateau 0.32m + trappe 0.64m) ---
+  // Layher : plateaux couvrent tout l'espace (crochets sur moises)
   const PLATEAU_W = 0.32;
   const TRAPPE_W = 0.64;
   for (const m of pc.mailles) {
@@ -244,30 +262,31 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     // Sens de pose : "longueur" = plateaux le long de la longueur de la maille
     const plankLen = m.plancherSens === 'longueur' ? dimX : dimZ; // longueur du plateau
     const coverDim = m.plancherSens === 'longueur' ? dimZ : dimX; // dimension a couvrir
-    const nbNiveaux = m.aVide ? 1 : levels.length;
+    const mLevels = computeLevelsFor(m.hauteurPlancher);
+    const nbNiveaux = m.aVide ? 1 : mLevels.length;
 
     if (pc.echelle && !m.aVide) {
-      // 1 trappe (0.64m) + plateaux pour le reste
-      const resteCover = Math.max(0, coverDim - TRAPPE_W);
-      const nbPlateaux = Math.floor(resteCover / PLATEAU_W);
-      items.push({ name: `Trappe ${plankLen}m`, category: 'Plateformes', count: nbNiveaux, unitWeight: 15.0 });
+      // 1 trappe (0.64m) + plateaux pour couvrir le reste
+      const remaining = coverDim - TRAPPE_W;
+      const nbPlateaux = Math.max(0, Math.round(remaining / PLATEAU_W));
+      items.push({ name: `Trappe ${plankLen}×0.64m`, category: 'Plateformes', count: nbNiveaux, unitWeight: Math.round(plankLen * 4.5 * 10) / 10 });
       if (nbPlateaux > 0) {
         items.push({ name: `Plateau ${plankLen}×0.32m`, category: 'Plateformes', count: nbPlateaux * nbNiveaux, unitWeight: Math.round(plankLen * 1.5 * 10) / 10 });
       }
     } else {
-      // Tout en plateaux
-      const nbPlateaux = Math.floor(coverDim / PLATEAU_W);
+      // Tout en plateaux — couvrir tout l'espace
+      const nbPlateaux = Math.round(coverDim / PLATEAU_W);
       if (nbPlateaux > 0) {
         items.push({ name: `Plateau ${plankLen}×0.32m`, category: 'Plateformes', count: nbPlateaux * nbNiveaux, unitWeight: Math.round(plankLen * 1.5 * 10) / 10 });
       }
     }
   }
 
-  // Diagonales : mailles pleines = 2 au 1er niveau, mailles a vide = 2 par niveau
+  // Diagonales : mailles pleines = 2 au 1er niveau, mailles a vide = 2 par niveau (per-maille levels)
   const maillesPleines = pc.mailles.filter(m => !m.aVide);
   const maillesVides = pc.mailles.filter(m => m.aVide);
   const diagPleines = maillesPleines.length * 2;
-  const diagVides = maillesVides.length * levels.length * 4; // 4 cotes
+  const diagVides = maillesVides.reduce((s, m) => s + computeLevelsFor(m.hauteurPlancher).length * 4, 0);
   const totalDiag = diagPleines + diagVides;
   if (totalDiag > 0) {
     items.push({ name: 'Diagonale', category: 'Diagonales', count: totalDiag, unitWeight: 5.5 });
@@ -281,7 +300,7 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   const gcByLen: Record<string, number> = {};
   const toeByLen: Record<string, number> = {};
   let portillonCount = 0;
-  let crinolineCount = 0;
+  let crinolineEchelles = 0;
   let crinolineArceaux = 0;
   let crinolinePoteaux = 0;
   let crinolineMoises = 0;
@@ -297,7 +316,8 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
       if (m.deportSides.xmax && segs.xmax.length > 0) segs.xmax = [];
     }
     const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
-    const nbNiveaux = m.aVide ? 1 : levels.length;
+    const mLevels2 = computeLevelsFor(m.hauteurPlancher);
+    const nbNiveaux = m.aVide ? 1 : mLevels2.length;
     const accesNiveaux = m.accesExterieur && m.accesExterieurPremierPalier ? 1 : nbNiveaux;
     // GC/plinthes par segment ouvert
     for (const edge of ['zmin', 'zmax', 'xmin', 'xmax'] as Edge[]) {
@@ -322,12 +342,12 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     }
     // Crinoline
     if (m.accesExterieur) {
-      const crinoH = m.accesExterieurPremierPalier ? (levels[0] || 2) : pc.hauteurPlancher;
+      const crinoH = m.accesExterieurPremierPalier ? (mLevels2[0] || 2) : m.hauteurPlancher;
       const nbSections = Math.ceil(crinoH / 2);
-      crinolineCount += 1;
+      crinolineEchelles += nbSections;
       crinolineArceaux += nbSections * 3;
       crinolinePoteaux += 2;
-      crinolineMoises += Math.ceil(crinoH / 2) + 1;
+      crinolineMoises += nbSections + 1;
     }
   }
   for (const [len, count] of Object.entries(gcByLen)) {
@@ -338,8 +358,8 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   }
   // Acces exterieur BOM
   if (portillonCount > 0) items.push({ name: 'Portillon acces', category: 'Acces exterieur', count: portillonCount, unitWeight: 8.5 });
-  if (crinolineCount > 0) {
-    items.push({ name: 'Echelle crinoline 2m', category: 'Acces exterieur', count: crinolineCount * Math.ceil(pc.hauteurPlancher / 2), unitWeight: 12.0 });
+  if (crinolineEchelles > 0) {
+    items.push({ name: 'Echelle crinoline 2m', category: 'Acces exterieur', count: crinolineEchelles, unitWeight: 12.0 });
     items.push({ name: 'Arceau crinoline', category: 'Acces exterieur', count: crinolineArceaux, unitWeight: 3.2 });
     items.push({ name: 'Poteau crinoline 2m', category: 'Acces exterieur', count: crinolinePoteaux, unitWeight: 7.3 });
     items.push({ name: 'Moise crinoline', category: 'Acces exterieur', count: crinolineMoises, unitWeight: 3.5 });
@@ -349,7 +369,7 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   if (accesMailleCount > 0) {
     const accesNiveauxTotal = pc.mailles.reduce((sum, m) => {
       if (!m.accesExterieur) return sum;
-      return sum + (m.accesExterieurPremierPalier ? 1 : levels.length);
+      return sum + (m.accesExterieurPremierPalier ? 1 : computeLevelsFor(m.hauteurPlancher).length);
     }, 0);
     items.push({ name: 'Collier plinthe', category: 'Acces exterieur', count: accesNiveauxTotal * 3, unitWeight: 0.8 });
   }
@@ -359,7 +379,8 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   // --- SAPINE (contreventement au pied : poteaux + moises + diag + verins) ---
   if (needsSapine(pc)) {
     // 2 poteaux de sapine
-    const sapPoteauH = (levels[0] || 2) + 1;
+    const sapLevels0 = computeLevelsFor(pc.mailles[0]?.hauteurPlancher || 6);
+    const sapPoteauH = (sapLevels0[0] || 2) + 1;
     const nbSegSap = Math.ceil(sapPoteauH / 2);
     items.push({ name: 'Poteau 2m (sapine)', category: 'Sapine', count: 2 * nbSegSap, unitWeight: 7.3 });
     items.push({ name: 'Verin de base (sapine)', category: 'Sapine', count: 2, unitWeight: 4.0 });
@@ -377,7 +398,8 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     if (!m.deport || m.deportLongueur <= 0) continue;
     const r = getMailleRect(m);
     const dL = closestLedger(m.deportLongueur);
-    const nbEtages = m.deportTousEtages ? levels.length : 1;
+    const depLevels = computeLevelsFor(m.hauteurPlancher);
+    const nbEtages = m.deportTousEtages ? depLevels.length : 1;
 
     const addDeportForSide = (mLen: number, isXaxis: boolean, p1x: number, p1z: number, p2x: number, p2z: number) => {
       const ml = closestLedger(mLen);
@@ -388,7 +410,7 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
       // Plateaux du deport selon le sens choisi
       const depPlankLen = m.deportPlancherSens === 'longueur' ? ml : dL;
       const depCoverDim = m.deportPlancherSens === 'longueur' ? dL : ml;
-      const nbDepPlateaux = Math.floor(depCoverDim / PLATEAU_W);
+      const nbDepPlateaux = Math.round(depCoverDim / PLATEAU_W);
       if (nbDepPlateaux > 0) {
         items.push({ name: `Plateau ${depPlankLen}×0.32m (deport)`, category: 'Consoles', count: nbDepPlateaux * nbEtages, unitWeight: Math.round(depPlankLen * 1.5 * 10) / 10 });
       }
@@ -416,8 +438,9 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   }
 
   if (pc.echelle) {
-    items.push({ name: 'Echelle 2.15m', category: 'Echelles', count: levels.length, unitWeight: 9.7 });
-    items.push({ name: 'Collier fixe (echelle)', category: 'Colliers', count: levels.length * 2, unitWeight: 1.1 });
+    const maxLevelsCount = Math.max(...pc.mailles.map(m => computeLevelsFor(m.hauteurPlancher).length));
+    items.push({ name: 'Echelle 2.15m', category: 'Echelles', count: maxLevelsCount, unitWeight: 9.7 });
+    items.push({ name: 'Collier fixe (echelle)', category: 'Colliers', count: maxLevelsCount * 2, unitWeight: 1.1 });
   }
 
   return items;
@@ -676,7 +699,7 @@ function ConfigPanel({
     const id = String(nextId.current++);
     setConfig(prev => ({
       ...prev,
-      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens}],
+      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, hauteurPlancher: last?.hauteurPlancher || 6, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens}],
     }));
     setSelected(id);
   };
@@ -715,25 +738,6 @@ function ConfigPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-        {/* Hauteur plancher max */}
-        <div>
-          <label className="text-[11px] text-[#888899] block mb-1.5">Hauteur plancher max</label>
-          <div className="flex flex-wrap gap-1.5">
-            {HAUTEURS_PLANCHER.map((h) => (
-              <button key={h}
-                onClick={() => setConfig(p => ({ ...p, hauteurPlancher: h }))}
-                className={`px-2.5 py-1.5 text-[12px] rounded-lg transition-all font-medium ${
-                  config.hauteurPlancher === h
-                    ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]'
-                    : 'bg-white/5 border border-white/10 text-[#888899] hover:border-white/20'
-                }`}>
-                {h}m
-              </button>
-            ))}
-          </div>
-        </div>
-
-
         {/* Layout editor */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -798,6 +802,17 @@ function ConfigPanel({
                   <button key={`w-${l}`} onClick={() => updateMaille({ largeur: l })}
                     className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
                     {l}m
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[9px] text-[#888899] block mb-1">Hauteur plancher</label>
+              <div className="flex flex-wrap gap-1">
+                {HAUTEURS_PLANCHER.map((h) => (
+                  <button key={`h-${h}`} onClick={() => updateMaille({ hauteurPlancher: h })}
+                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.hauteurPlancher === h ? 'bg-[#ef4444]/20 border border-[#ef4444]/50 text-[#f87171]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                    {h}m
                   </button>
                 ))}
               </div>
@@ -1178,8 +1193,8 @@ export function PlannerView() {
   const [config, setConfig] = useState<PlannerConfig>({
     hauteurPlancher: 6,
     mailles: [
-      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
-      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
+      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, hauteurPlancher: 6, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
+      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, hauteurPlancher: 6, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
     ],
     type: 'interieur',
     verinage: false,
@@ -1211,7 +1226,7 @@ export function PlannerView() {
             <h1 className="text-xs sm:text-sm font-semibold truncate">Orano echaf' belleville</h1>
             <p className="text-[8px] sm:text-[9px] text-[#555566] truncate">
               {config.mailles.length} maille{config.mailles.length > 1 ? 's' : ''}
-              &bull; H{config.hauteurPlancher}m
+              &bull; H{Math.max(...config.mailles.map(m => m.hauteurPlancher))}m
               &bull; {totalPieces} pcs / {totalWeight} kg
             </p>
           </div>

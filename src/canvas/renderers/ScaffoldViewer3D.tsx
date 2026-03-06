@@ -54,65 +54,80 @@ function Tube({ start, end, radius, color, metalness = 0.6, roughness = 0.35 }: 
 }
 
 const PLATFORM_GREY = '#707880';
-const PLATFORM_ORANGE = '#d08030';
+const TRAP_BROWN = '#8B5E3C';
+const TRAP_HOLE_COLOR = '#3a3a3a';
 
-// plankAxis: 'x' = planches le long de X (espaces en Z), 'z' = planches le long de Z (espaces en X)
-// hasTrap: trappe orange (0.64m) incluse
+// Layher Allround : plateau 0.32m, trappe 0.64m
+// Les plateaux couvrent tout l'espace (crochets sur moises), gaps visuels seulement
+const PLANK_NOMINAL = 0.32;
+const TRAP_NOMINAL = 0.64;
+const VIS_GAP = 0.01; // gap visuel entre planches
+
 function Platform({ x, y, z, width, depth, plankAxis, hasTrap }: {
   x: number; y: number; z: number; width: number; depth: number;
   plankAxis: 'x' | 'z'; hasTrap?: boolean;
 }) {
   const t = 0.04;
-  const PLANK_W = 0.30; // largeur visuelle d'un plateau (0.32m - gap)
-  const TRAP_W = 0.60;  // largeur visuelle trappe (0.64m - gap)
-  const GAP = 0.02;
   const planks: React.ReactElement[] = [];
   let idx = 0;
 
-  if (plankAxis === 'x') {
-    // Planches le long de X, empilees en Z
-    let pz = z + GAP / 2;
-    // Trappe d'abord si demandée
-    if (hasTrap && pz + TRAP_W <= z + depth + 0.001) {
-      planks.push(
-        <mesh key={idx++} position={[x + width / 2, y - t / 2, pz + TRAP_W / 2]}>
-          <boxGeometry args={[width - 0.02, t, TRAP_W]} />
-          <meshStandardMaterial color={PLATFORM_ORANGE} metalness={0.3} roughness={0.7} />
-        </mesh>
-      );
-      pz += TRAP_W + GAP;
-    }
-    while (pz + PLANK_W <= z + depth + 0.001) {
-      planks.push(
-        <mesh key={idx++} position={[x + width / 2, y - t / 2, pz + PLANK_W / 2]}>
-          <boxGeometry args={[width - 0.02, t, PLANK_W]} />
-          <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
-        </mesh>
-      );
-      pz += PLANK_W + GAP;
-    }
-  } else {
-    // Planches le long de Z, empilees en X
-    let px = x + GAP / 2;
-    if (hasTrap && px + TRAP_W <= x + width + 0.001) {
-      planks.push(
-        <mesh key={idx++} position={[px + TRAP_W / 2, y - t / 2, z + depth / 2]}>
-          <boxGeometry args={[TRAP_W, t, depth - 0.02]} />
-          <meshStandardMaterial color={PLATFORM_ORANGE} metalness={0.3} roughness={0.7} />
-        </mesh>
-      );
-      px += TRAP_W + GAP;
-    }
-    while (px + PLANK_W <= x + width + 0.001) {
-      planks.push(
-        <mesh key={idx++} position={[px + PLANK_W / 2, y - t / 2, z + depth / 2]}>
-          <boxGeometry args={[PLANK_W, t, depth - 0.02]} />
-          <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
-        </mesh>
-      );
-      px += PLANK_W + GAP;
-    }
+  // coverDim = dimension a couvrir transversalement, plankLen = longueur des planches
+  const coverDim = plankAxis === 'x' ? depth : width;
+  const plankLen = plankAxis === 'x' ? width : depth;
+
+  // Calculer la disposition : 1 trappe (0.64m) + N plateaux (0.32m) pour couvrir coverDim
+  const trapW = hasTrap ? TRAP_NOMINAL : 0;
+  const remaining = coverDim - trapW;
+  const nbPlateaux = Math.max(0, Math.round(remaining / PLANK_NOMINAL));
+  const totalNominal = trapW + nbPlateaux * PLANK_NOMINAL;
+  // Facteur d'échelle pour couvrir exactement la dimension
+  const scale = totalNominal > 0 ? coverDim / totalNominal : 1;
+  const actualTrapW = trapW * scale;
+  const actualPlankW = PLANK_NOMINAL * scale;
+
+  let offset = 0;
+
+  // Trappe (marron + carré d'ouverture pour l'échelle)
+  if (hasTrap && actualTrapW > 0) {
+    const visW = actualTrapW - VIS_GAP;
+    const cx = plankAxis === 'x' ? x + plankLen / 2 : x + offset + actualTrapW / 2;
+    const cz = plankAxis === 'x' ? z + offset + actualTrapW / 2 : z + plankLen / 2;
+    const geoW = plankAxis === 'x' ? plankLen - 0.02 : visW;
+    const geoD = plankAxis === 'x' ? visW : plankLen - 0.02;
+    // Trappe principale
+    planks.push(
+      <mesh key={idx++} position={[cx, y - t / 2, cz]}>
+        <boxGeometry args={[geoW, t, geoD]} />
+        <meshStandardMaterial color={TRAP_BROWN} metalness={0.3} roughness={0.7} />
+      </mesh>
+    );
+    // Carré d'ouverture échelle (trou sombre sur la trappe)
+    const holeSize = Math.min(actualTrapW * 0.7, plankLen * 0.3);
+    planks.push(
+      <mesh key={idx++} position={[cx, y - t / 2 + 0.005, cz]}>
+        <boxGeometry args={[plankAxis === 'x' ? holeSize : holeSize * 0.9, 0.006, plankAxis === 'x' ? holeSize * 0.9 : holeSize]} />
+        <meshStandardMaterial color={TRAP_HOLE_COLOR} metalness={0.1} roughness={0.9} />
+      </mesh>
+    );
+    offset += actualTrapW;
   }
+
+  // Plateaux gris
+  for (let i = 0; i < nbPlateaux; i++) {
+    const visW = actualPlankW - VIS_GAP;
+    const cx = plankAxis === 'x' ? x + plankLen / 2 : x + offset + actualPlankW / 2;
+    const cz = plankAxis === 'x' ? z + offset + actualPlankW / 2 : z + plankLen / 2;
+    const geoW = plankAxis === 'x' ? plankLen - 0.02 : visW;
+    const geoD = plankAxis === 'x' ? visW : plankLen - 0.02;
+    planks.push(
+      <mesh key={idx++} position={[cx, y - t / 2, cz]}>
+        <boxGeometry args={[geoW, t, geoD]} />
+        <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
+      </mesh>
+    );
+    offset += actualPlankW;
+  }
+
   return <group>{planks}</group>;
 }
 
@@ -169,19 +184,16 @@ function Clamp({ x, y, z }: { x: number; y: number; z: number }) {
 // ==========================================
 // SCENE
 // ==========================================
+function computeLevelsFor3D(h: number): number[] {
+  const l: number[] = [];
+  for (let y = 2; y <= h; y += 2) l.push(y);
+  if (!l.includes(h)) l.push(h);
+  return l.sort((a, b) => a - b);
+}
+
 function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
-  const { hauteurPlancher, mailles, verinage, echelle } = pc;
-  const maxH = hauteurPlancher + 1;
+  const { mailles, verinage, echelle } = pc;
   const jackH = 0.40 + 0.15; // base jack 40cm + plate
-
-  const levels = useMemo(() => {
-    const l: number[] = [];
-    for (let h = 2; h <= hauteurPlancher; h += 2) l.push(h);
-    if (!l.includes(hauteurPlancher)) l.push(hauteurPlancher);
-    return l.sort((a, b) => a - b);
-  }, [hauteurPlancher]);
-
-  const topLevel = levels[levels.length - 1] || hauteurPlancher;
 
   const rects = useMemo(
     () => mailles.map(m => getMailleRect(m)),
@@ -203,34 +215,34 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
     let k = 0;
     const key = () => `e-${k++}`;
 
-    // Unique poteau positions
-    const poteauKeys = new Set<string>();
+    // Poteaux : hauteur = max des mailles adjacentes
+    const poteauMaxH: Record<string, number> = {};
+    for (let i = 0; i < mailles.length; i++) {
+      const m = mailles[i]; const r = rects[i];
+      const mH = m.hauteurPlancher + 1;
+      for (const corner of [`${r.x1.toFixed(3)},${r.z1.toFixed(3)}`, `${r.x2.toFixed(3)},${r.z1.toFixed(3)}`, `${r.x1.toFixed(3)},${r.z2.toFixed(3)}`, `${r.x2.toFixed(3)},${r.z2.toFixed(3)}`]) {
+        poteauMaxH[corner] = Math.max(poteauMaxH[corner] || 0, mH);
+      }
+    }
+
+    const poteauDone = new Set<string>();
     const addPoteau = (x: number, z: number) => {
       const pk = `${x.toFixed(3)},${z.toFixed(3)}`;
-      if (poteauKeys.has(pk)) return;
-      poteauKeys.add(pk);
+      if (poteauDone.has(pk)) return;
+      poteauDone.add(pk);
+      const pH = poteauMaxH[pk] || 7;
 
-      // Verin
       els.push(<BaseJack key={key()} x={x} z={z} heightM={jackH} />);
-
-      // Poteaux empiles 2m
-      let rem = maxH; let cy = jackH; let seg = 0;
+      let rem = pH; let cy = jackH;
       while (rem > 0.01) {
         const segH = Math.min(POTEAU_MAX, rem);
         els.push(<Tube key={key()} start={[x, cy, z]} end={[x, cy + segH, z]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
         for (let rh = 0.5; rh <= segH; rh += 0.5) {
           els.push(<Rosette key={key()} x={x} y={cy + rh} z={z} />);
         }
-        cy += segH; rem -= segH; seg++;
+        cy += segH; rem -= segH;
       }
     };
-
-    // Hauteurs des moises : base + intermediaires + paliers
-    const moiseHeights = [0];
-    for (let h = 2; h < maxH - 0.1; h += 2) {
-      if (!levels.includes(h)) moiseHeights.push(h);
-    }
-    for (const lh of levels) moiseHeights.push(lh);
 
     // Deduplication moises/U par position
     const moiseDone = new Set<string>();
@@ -252,12 +264,21 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 
       const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
 
+      // Levels per maille
+      const mLevels = computeLevelsFor3D(m.hauteurPlancher);
+      const mMaxH = m.hauteurPlancher + 1;
+      const mMoiseHeights: number[] = [0];
+      for (let h = 2; h < mMaxH - 0.1; h += 2) {
+        if (!mLevels.includes(h)) mMoiseHeights.push(h);
+      }
+      for (const lh of mLevels) mMoiseHeights.push(lh);
+
       // 4 poteaux (dedupliques)
       addPoteau(r.x1, r.z1); addPoteau(r.x2, r.z1);
       addPoteau(r.x1, r.z2); addPoteau(r.x2, r.z2);
 
       // Moises/U a chaque hauteur (dedupliques)
-      for (const mh of moiseHeights) {
+      for (const mh of mMoiseHeights) {
         const y = jackH + mh;
         const mk1 = `${r.x1.toFixed(3)},${r.x2.toFixed(3)},${r.z1.toFixed(3)},${mh.toFixed(3)}`;
         const mk2 = `${r.x1.toFixed(3)},${r.x2.toFixed(3)},${r.z2.toFixed(3)},${mh.toFixed(3)}`;
@@ -272,7 +293,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       // Diagonales
       if (m.aVide) {
         let prevY = jackH;
-        for (const lh of levels) {
+        for (const lh of mLevels) {
           const topY = jackH + lh;
           els.push(<Tube key={key()} start={[r.x1, prevY, r.z1]} end={[r.x2, topY, r.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
           els.push(<Tube key={key()} start={[r.x2, prevY, r.z2]} end={[r.x1, topY, r.z2]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
@@ -281,17 +302,17 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
           prevY = topY;
         }
       } else {
-        const diagTop = levels[0] || 2;
+        const diagTop = mLevels[0] || 2;
         els.push(<Tube key={key()} start={[r.x1, jackH, r.z1]} end={[r.x2, jackH + diagTop, r.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
         els.push(<Tube key={key()} start={[r.x2, jackH, r.z2]} end={[r.x1, jackH + diagTop, r.z2]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
       }
 
       // A chaque palier : plateforme + GC/plinthes par segment ouvert
-      const isTopLevel = (lh: number) => lh === levels[levels.length - 1];
-      for (let li = 0; li < levels.length; li++) {
-        const lh = levels[li];
+      const mTopLevel = mLevels[mLevels.length - 1] || m.hauteurPlancher;
+      for (let li = 0; li < mLevels.length; li++) {
+        const lh = mLevels[li];
         const py = jackH + lh;
-        const showFull = !m.aVide || isTopLevel(lh);
+        const showFull = !m.aVide || lh === mTopLevel;
         if (!showFull) continue;
 
         // plankAxis selon rotation et plancherSens
@@ -300,7 +321,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
           : (m.rotation === 0 ? 'z' : 'x');
         els.push(<Platform key={key()} x={r.x1} y={py} z={r.z1} width={r.x2 - r.x1} depth={r.z2 - r.z1} plankAxis={pAxis} hasTrap={echelle && !m.aVide} />);
 
-        const accesMaxLevel = m.accesExterieur && m.accesExterieurPremierPalier ? (levels[0] || 2) : Infinity;
+        const accesMaxLevel = m.accesExterieur && m.accesExterieurPremierPalier ? (mLevels[0] || 2) : Infinity;
         const isAccesLevel = accesSide && lh <= accesMaxLevel;
 
         // GC + plinthes par segment ouvert (pas par cote entier)
@@ -347,7 +368,8 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       if (!m.accesExterieur) continue;
       const r = rects[mi];
       const side = m.accesExterieurSide;
-      const crinoH = m.accesExterieurPremierPalier ? (levels[0] || 2) : topLevel;
+      const cLevels = computeLevelsFor3D(m.hauteurPlancher);
+      const crinoH = m.accesExterieurPremierPalier ? (cLevels[0] || 2) : m.hauteurPlancher;
       const crinoTopY = jackH + crinoH;
 
       // Position de la crinoline : au centre du cote, decalee vers l'exterieur
@@ -409,7 +431,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       }
 
       // Moises de liaison crinoline → echaff (a chaque palier acces)
-      for (const lh of levels) {
+      for (const lh of cLevels) {
         if (lh > crinoH) break;
         const my = jackH + lh;
         if (isXside) {
@@ -429,13 +451,15 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       const pleineIdx = mailles.findIndex(m => !m.aVide);
       if (pleineIdx < 0) { /* pas de maille pleine, pas d'echelle */ }
       const r0 = pleineIdx >= 0 ? rects[pleineIdx] : rects[0];
+      const echMaille = pleineIdx >= 0 ? mailles[pleineIdx] : mailles[0];
+      const echLevels = computeLevelsFor3D(echMaille.hauteurPlancher);
       const cx = (r0.x1 + r0.x2) / 2;
       const ladderW = 0.40; const halfW = ladderW / 2;
       const rungSpacing = 0.28;
 
       let prevTop = jackH;
-      for (let li = 0; li < levels.length; li++) {
-        const lh = levels[li];
+      for (let li = 0; li < echLevels.length; li++) {
+        const lh = echLevels[li];
         const baseY = prevTop;
         const topY = jackH + lh;
         const ladH = topY - baseY;
@@ -461,10 +485,12 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 
     // --- VERINAGE ---
     if (verinage) {
-      const moiseY = jackH + topLevel;
       const tubeH = 1.5;
       const done = new Set<string>();
-      for (const r of rects) {
+      for (let vi = 0; vi < mailles.length; vi++) {
+        const vm = mailles[vi]; const r = rects[vi];
+        const vLevels = computeLevelsFor3D(vm.hauteurPlancher);
+        const moiseY = jackH + (vLevels[vLevels.length - 1] || vm.hauteurPlancher);
         for (const [px, pz] of [[r.x1, r.z1], [r.x2, r.z1], [r.x1, r.z2], [r.x2, r.z2]]) {
           const pk = `${px.toFixed(3)},${pz.toFixed(3)}`;
           if (done.has(pk)) continue;
@@ -484,8 +510,9 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
     if (needsSapine(pc) && rects.length > 0) {
       const r0 = rects[0];
       const sapD = closestLedger(mailles[0]?.largeur || 0.73); // profondeur sapine = largeur 1ere maille
-      const level1 = levels[0] || 2; // 1er plancher
-      const level2 = levels[1] || levels[0] + 2 || 4; // 2eme plancher
+      const sapLevels = computeLevelsFor3D(mailles[0]?.hauteurPlancher || 6);
+      const level1 = sapLevels[0] || 2; // 1er plancher
+      const level2 = sapLevels[1] || sapLevels[0] + 2 || 4; // 2eme plancher
       const sapPoteauH = level1 + 1; // poteau sapine monte au 1er plancher + 1m
 
       // 2 poteaux de sapine devant (cote zmin, meme X que les poteaux du 1er rect)
@@ -536,7 +563,9 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       if (!dm.deport || dm.deportLongueur <= 0) continue;
       const dr = rects[mi];
       const offset = closestLedger(dm.deportLongueur);
-      const deportLevels = dm.deportTousEtages ? levels : [topLevel];
+      const dmLevels = computeLevelsFor3D(dm.hauteurPlancher);
+      const dmTopLevel = dmLevels[dmLevels.length - 1] || dm.hauteurPlancher;
+      const deportLevels = dm.deportTousEtages ? dmLevels : [dmTopLevel];
 
       const renderConsole = (xBase: number, zBase: number, dx: number, dz: number, lenX: number, lenZ: number) => {
         for (const lh of deportLevels) {
@@ -592,7 +621,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
     }
 
     return els;
-  }, [pc, rects, levels]);
+  }, [pc, rects]);
 
   return (
     <group position={[-bounds.cx, 0, -bounds.cz]}>
@@ -632,7 +661,7 @@ function Ground() {
 // EXPORT
 // ==========================================
 export function ScaffoldViewer3D({ plannerConfig }: { plannerConfig: PlannerConfig }) {
-  const totalH = plannerConfig.hauteurPlancher + 1.55;
+  const totalH = Math.max(...plannerConfig.mailles.map(m => m.hauteurPlancher), plannerConfig.hauteurPlancher) + 1.55;
   const rects = plannerConfig.mailles.map(m => getMailleRect(m));
   let maxSpan = 3;
   for (const r of rects) {
