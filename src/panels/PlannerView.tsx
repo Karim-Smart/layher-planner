@@ -983,6 +983,15 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   // Ajustements manuels par nom de piece (key = item.name)
   const [adjustments, setAdjustments] = useState<Record<string, number>>({});
+  // Cases cochees (elements rayes)
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+  const toggleChecked = (name: string) => {
+    setCheckedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
   const adjustCount = (name: string, delta: number) => {
     setAdjustments(prev => {
@@ -1051,8 +1060,8 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
           <span className="text-xs font-semibold">Feuille de calcul</span>
         </div>
         <div className="flex items-center gap-2">
-          {Object.keys(adjustments).length > 0 && (
-            <button onClick={() => setAdjustments({})} className="glass-button text-[10px] py-1 px-2 text-orange-400">
+          {(Object.keys(adjustments).length > 0 || checkedItems.size > 0) && (
+            <button onClick={() => { setAdjustments({}); setCheckedItems(new Set()); }} className="glass-button text-[10px] py-1 px-2 text-orange-400">
               Reset
             </button>
           )}
@@ -1081,7 +1090,8 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
                 <CatGroup key={cat} cat={cat} items={items}
                   isCollapsed={isCollapsed} onToggle={() => toggleCat(cat)}
                   catWeight={catWeight} catCount={catCount}
-                  adjustments={adjustments} onAdjust={adjustCount} />
+                  adjustments={adjustments} onAdjust={adjustCount}
+                  checkedItems={checkedItems} onToggleChecked={toggleChecked} />
               );
             })}
           </tbody>
@@ -1099,29 +1109,40 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
   );
 }
 
-function CatGroup({ cat, items, isCollapsed, onToggle, catWeight, catCount, adjustments, onAdjust }: {
+function CatGroup({ cat, items, isCollapsed, onToggle, catWeight, catCount, adjustments, onAdjust, checkedItems, onToggleChecked }: {
   cat: string; items: BOMItem[]; isCollapsed: boolean; onToggle: () => void;
   catWeight: number; catCount: number;
   adjustments: Record<string, number>; onAdjust: (name: string, delta: number) => void;
+  checkedItems: Set<string>; onToggleChecked: (name: string) => void;
 }) {
   return (
     <>
       <tr className="cursor-pointer hover:bg-white/[0.03] transition-colors" onClick={onToggle}>
-        <td className="px-4 py-1.5 text-[10px] font-semibold text-[#e8c840]/80 uppercase tracking-wider">
+        <td className="px-4 py-1.5 text-[10px] font-semibold text-[#e8c840]/80 uppercase tracking-wider" colSpan={2}>
           <span className="inline-flex items-center gap-1">
             {isCollapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
-            {cat}
+            {cat} <span className="text-[#888899] font-normal ml-1">({catCount})</span>
           </span>
         </td>
-        <td className="text-center px-1 py-1.5 text-[10px] text-[#888899] font-medium">{catCount}</td>
         <td />
         <td className="text-right px-4 py-1.5 text-[10px] text-[#888899] font-medium">{catWeight}</td>
       </tr>
       {!isCollapsed && items.map((it, i) => {
         const adj = adjustments[it.name] || 0;
+        const isChecked = checkedItems.has(it.name);
         return (
-          <tr key={`${it.name}-${i}`} className="hover:bg-white/[0.02] transition-colors group">
-            <td className="pl-8 pr-2 py-1 text-white/60 truncate max-w-[180px]">{it.name}</td>
+          <tr key={`${it.name}-${i}`} className={`hover:bg-white/[0.02] transition-colors group ${isChecked ? 'opacity-40' : ''}`}>
+            <td className="pl-6 pr-1 py-1 truncate max-w-[180px]">
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggleChecked(it.name)}
+                  className="w-3 h-3 rounded border-white/20 bg-white/5 accent-green-500 cursor-pointer"
+                />
+                <span className={`text-white/60 ${isChecked ? 'line-through' : ''}`}>{it.name}</span>
+              </label>
+            </td>
             <td className="text-center px-1 py-1">
               <span className="inline-flex items-center gap-0.5">
                 <button
@@ -1136,8 +1157,8 @@ function CatGroup({ cat, items, isCollapsed, onToggle, catWeight, catCount, adju
                 >+</button>
               </span>
             </td>
-            <td className="text-right px-2 py-1 tabular-nums text-[#666677]">{it.unitWeight}</td>
-            <td className="text-right px-4 py-1 tabular-nums">{Math.round(it.count * it.unitWeight * 10) / 10}</td>
+            <td className={`text-right px-2 py-1 tabular-nums text-[#666677] ${isChecked ? 'line-through' : ''}`}>{it.unitWeight}</td>
+            <td className={`text-right px-4 py-1 tabular-nums ${isChecked ? 'line-through' : ''}`}>{Math.round(it.count * it.unitWeight * 10) / 10}</td>
           </tr>
         );
       })}
