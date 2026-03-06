@@ -468,11 +468,11 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
     <button
       onClick={() => onChange(!checked)}
       className={`w-10 h-[22px] rounded-full transition-all duration-200 relative flex-shrink-0 ${
-        checked ? 'bg-[#e8c840]/25 border border-[#e8c840]/40' : 'bg-white/[0.04] border border-white/10'
+        checked ? 'bg-[#F2A900]/15 border border-[#F2A900]/30' : 'bg-black/[0.04] border border-black/[0.1]'
       }`}
     >
       <span className={`absolute top-[3px] w-4 h-4 rounded-full transition-all duration-200 ${
-        checked ? 'left-[21px] bg-[#e8c840] shadow-[0_0_6px_rgba(232,200,64,0.4)]' : 'left-[3px] bg-[#555566]'
+        checked ? 'left-[21px] bg-[#F2A900] shadow-[0_0_6px_rgba(242,169,0,0.3)]' : 'left-[3px] bg-[#c7c7cc]'
       }`} />
     </button>
   );
@@ -623,18 +623,18 @@ function LayoutEditor({
   const gStep = 0.5;
   for (let gx = Math.floor(bounds.minX); gx <= Math.ceil(bounds.maxX); gx += gStep) {
     gridLines.push(<line key={`gx-${gx}`} x1={toSvgX(gx)} y1={toSvgY(bounds.minZ)} x2={toSvgX(gx)} y2={toSvgY(bounds.maxZ)}
-      stroke="rgba(255,255,255,0.04)" strokeWidth={gx % 1 === 0 ? 1 : 0.5} />);
+      stroke="rgba(0,0,0,0.06)" strokeWidth={gx % 1 === 0 ? 1 : 0.5} />);
   }
   for (let gz = Math.floor(bounds.minZ); gz <= Math.ceil(bounds.maxZ); gz += gStep) {
     gridLines.push(<line key={`gz-${gz}`} x1={toSvgX(bounds.minX)} y1={toSvgY(gz)} x2={toSvgX(bounds.maxX)} y2={toSvgY(gz)}
-      stroke="rgba(255,255,255,0.04)" strokeWidth={gz % 1 === 0 ? 1 : 0.5} />);
+      stroke="rgba(0,0,0,0.06)" strokeWidth={gz % 1 === 0 ? 1 : 0.5} />);
   }
 
   return (
     <svg
       ref={svgRef}
       width={svgW} height={svgH}
-      className="bg-[#0c0c12] rounded-lg border border-white/6 cursor-crosshair"
+      className="bg-[#f0f0f4] rounded-lg border border-black/[0.06] cursor-crosshair"
       style={{ maxWidth: '100%', maxHeight: `${containerH}px` }}
       viewBox={`0 0 ${svgW} ${svgH}`}
       onMouseMove={handleMouseMove}
@@ -648,7 +648,7 @@ function LayoutEditor({
       {gridLines}
       <defs>
         <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+          <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(0,0,0,0.1)" strokeWidth="1" />
         </pattern>
       </defs>
       {rects.map(({ m, r }) => {
@@ -656,14 +656,14 @@ function LayoutEditor({
         const edgeSegs = getOpenSegments(r, rects.map(rr => rr.r));
         const w = (r.x2 - r.x1) * sc;
         const h = (r.z2 - r.z1) * sc;
-        const acCol = (side: string) => m.accesExterieur && m.accesExterieurSide === side ? '#22c55e' : '#e8c840';
+        const acCol = (side: string) => m.accesExterieur && m.accesExterieurSide === side ? '#22c55e' : '#F2A900';
         return (
           <g key={m.id} onMouseDown={(e) => handleMouseDown(e, m.id)} onTouchStart={(e) => handleTouchStart(e, m.id)}>
             <rect
               x={toSvgX(r.x1)} y={toSvgY(r.z1)} width={w} height={h}
               rx={3}
-              fill={m.aVide ? 'url(#hatch)' : isSel ? 'rgba(232,200,64,0.15)' : 'rgba(160,170,180,0.1)'}
-              stroke={isSel ? '#e8c840' : m.aVide ? 'rgba(255,100,100,0.3)' : 'rgba(160,170,180,0.3)'}
+              fill={m.aVide ? 'url(#hatch)' : isSel ? 'rgba(242,169,0,0.12)' : 'rgba(0,0,0,0.04)'}
+              stroke={isSel ? '#F2A900' : m.aVide ? 'rgba(239,68,68,0.3)' : 'rgba(0,0,0,0.15)'}
               strokeWidth={isSel ? 2 : 1}
               className="cursor-move"
             />
@@ -676,7 +676,7 @@ function LayoutEditor({
             <text
               x={toSvgX(r.x1) + w / 2} y={toSvgY(r.z1) + h / 2}
               textAnchor="middle" dominantBaseline="central"
-              fill={isSel ? '#e8c840' : '#888899'}
+              fill={isSel ? '#c88800' : '#86868b'}
               fontSize={10} fontWeight={600}
             >
               {closestLedger(m.longueur)}×{closestLedger(m.largeur)}{m.aVide ? ' ∅' : ''}{m.accesExterieur ? ' ⇄' : ''}{m.deport ? ' ⌐' : ''}
@@ -743,11 +743,11 @@ function ConfigPanel({
   const sm = selected ? config.mailles.find(m => m.id === selected) : null;
 
   return (
-    <div className="w-full sm:w-[300px] sm:min-w-[300px] glass-panel sm:border-r border-white/6 flex flex-col overflow-hidden">
-      <div className="px-4 py-3 border-b border-white/6">
+    <div className="w-full sm:w-[300px] sm:min-w-[300px] glass-panel sm:border-r border-black/[0.06] flex flex-col overflow-hidden">
+      <div className="px-4 py-3 border-b border-black/[0.06]">
         <div className="flex items-center gap-2">
-          <Ruler size={14} className="text-[#e8c840]" />
-          <span className="text-xs font-semibold">Configuration</span>
+          <Ruler size={14} className="text-[#F2A900]" />
+          <span className="text-xs font-semibold text-[#1d1d1f]">Configuration</span>
         </div>
       </div>
 
@@ -755,20 +755,20 @@ function ConfigPanel({
         {/* Layout editor */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[11px] text-[#888899]">
+            <label className="text-[11px] text-[#86868b]">
               Mailles ({config.mailles.length})
             </label>
             <div className="flex gap-1">
               <button onClick={rotateMaille} disabled={!selected}
-                className="w-6 h-6 rounded flex items-center justify-center bg-white/5 border border-white/10 text-[#888899] hover:border-white/20 disabled:opacity-30" title="Tourner">
+                className="w-6 h-6 rounded flex items-center justify-center bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15] disabled:opacity-30" title="Tourner">
                 <RotateCw size={11} />
               </button>
               <button onClick={removeMaille} disabled={!selected || config.mailles.length <= 1}
-                className="w-6 h-6 rounded flex items-center justify-center bg-white/5 border border-white/10 text-[#888899] hover:border-white/20 disabled:opacity-30" title="Supprimer">
+                className="w-6 h-6 rounded flex items-center justify-center bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15] disabled:opacity-30" title="Supprimer">
                 <Trash2 size={11} />
               </button>
               <button onClick={addMaille}
-                className="w-6 h-6 rounded flex items-center justify-center bg-white/5 border border-white/10 text-[#888899] hover:border-white/20" title="Ajouter">
+                className="w-6 h-6 rounded flex items-center justify-center bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15]" title="Ajouter">
                 <Plus size={11} />
               </button>
             </div>
@@ -776,65 +776,65 @@ function ConfigPanel({
 
           <LayoutEditor config={config} setConfig={setConfig} selected={selected} setSelected={setSelected} />
 
-          <p className="text-[9px] text-[#555566] mt-1">
+          <p className="text-[9px] text-[#aeaeb2] mt-1">
             <Move size={9} className="inline mr-0.5" /> Clic pour selectionner &bull; Glisser pour deplacer &bull; Double-clic pour tourner
           </p>
         </div>
 
         {/* Options maille selectionnee */}
         {sm && (
-          <div className="space-y-2 p-3 bg-[#16161e] rounded-lg border border-white/10">
+          <div className="space-y-2 p-3 bg-[#f8f8fa] rounded-lg border border-black/[0.08]">
             <div className="flex items-center justify-between">
-              <label className="text-[10px] text-[#e8c840] uppercase tracking-wider font-semibold">Maille {closestLedger(sm.longueur)}×{closestLedger(sm.largeur)}</label>
+              <label className="text-[10px] text-[#c88800] uppercase tracking-wider font-semibold">Maille {closestLedger(sm.longueur)}×{closestLedger(sm.largeur)}</label>
               <div className="flex gap-1.5">
                 <button onClick={() => updateMaille({ rotation: sm.rotation === 0 ? 90 : 0 as 0 | 90 })}
-                  className="p-1 rounded bg-white/5 border border-white/10 text-[#888899] hover:text-white/80 active:scale-90" title="Tourner">
+                  className="p-1 rounded bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:text-[#1d1d1f] active:scale-90" title="Tourner">
                   <RotateCw size={11} />
                 </button>
                 <button onClick={() => { if (config.mailles.length <= 1) return; setConfig(prev => ({ ...prev, mailles: prev.mailles.filter(m => m.id !== selected) })); setSelected(null); }}
                   disabled={config.mailles.length <= 1}
-                  className="p-1 rounded bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-90 disabled:opacity-30" title="Supprimer">
+                  className="p-1 rounded bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500/20 active:scale-90 disabled:opacity-30" title="Supprimer">
                   <Trash2 size={11} />
                 </button>
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-[#888899] block mb-1">Longueur</label>
+              <label className="text-[9px] text-[#86868b] block mb-1">Longueur</label>
               <div className="flex flex-wrap gap-1">
                 {MOISE_LENGTHS.map((l) => (
                   <button key={`l-${l}`} onClick={() => updateMaille({ longueur: l })}
-                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.longueur === l ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.longueur === l ? 'bg-[#F2A900]/10 border border-[#F2A900]/30 text-[#c88800]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
                     {l}m
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-[#888899] block mb-1">Profondeur</label>
+              <label className="text-[9px] text-[#86868b] block mb-1">Profondeur</label>
               <div className="flex flex-wrap gap-1">
                 {MOISE_LENGTHS.map((l) => (
                   <button key={`w-${l}`} onClick={() => updateMaille({ largeur: l })}
-                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/10 border border-[#3b82f6]/30 text-[#3b82f6]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
                     {l}m
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-[#888899] block mb-1">Hauteur plancher</label>
+              <label className="text-[9px] text-[#86868b] block mb-1">Hauteur plancher</label>
               <div className="flex flex-wrap gap-1">
                 {HAUTEURS_PLANCHER.map((h) => (
                   <button key={`h-${h}`} onClick={() => updateMaille({ hauteurPlancher: h })}
-                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.hauteurPlancher === h ? 'bg-[#ef4444]/20 border border-[#ef4444]/50 text-[#f87171]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.hauteurPlancher === h ? 'bg-[#ef4444]/10 border border-[#ef4444]/30 text-[#ef4444]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
                     {h}m
                   </button>
                 ))}
               </div>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+              <label className="flex items-center gap-1.5 text-[10px] text-[#86868b] cursor-pointer">
                 <input type="checkbox" checked={sm.aVide} onChange={(e) => updateMaille({ aVide: e.target.checked })}
-                  className="w-3.5 h-3.5 rounded accent-[#e8c840]" />
+                  className="w-3.5 h-3.5 rounded accent-[#F2A900]" />
                 Vide
               </label>
               <label className="flex items-center gap-1.5 text-[10px] text-[#22c55e] cursor-pointer">
@@ -845,11 +845,11 @@ function ConfigPanel({
             </div>
             {!sm.aVide && (
               <div>
-                <label className="text-[9px] text-[#888899] block mb-1">Sens plancher</label>
+                <label className="text-[9px] text-[#86868b] block mb-1">Sens plancher</label>
                 <div className="flex gap-1">
                   {([['longueur', 'En longueur'], ['largeur', 'En largeur']] as [PlancherSens, string][]).map(([s, label]) => (
                     <button key={s} onClick={() => updateMaille({ plancherSens: s })}
-                      className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.plancherSens === s ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                      className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.plancherSens === s ? 'bg-[#F2A900]/10 border border-[#F2A900]/30 text-[#c88800]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
                       {label}
                     </button>
                   ))}
@@ -857,17 +857,17 @@ function ConfigPanel({
               </div>
             )}
             {sm.accesExterieur && (
-              <div className="space-y-1.5 pt-1 border-t border-white/5">
+              <div className="space-y-1.5 pt-1 border-t border-black/[0.05]">
                 <label className="text-[9px] text-[#22c55e] block">Cote acces (crinoline + portillon)</label>
                 <div className="flex gap-1">
                   {([['zmin', 'Avant'], ['zmax', 'Arriere'], ['xmin', 'Gauche'], ['xmax', 'Droite']] as [AccesSide, string][]).map(([side, label]) => (
                     <button key={side} onClick={() => updateMaille({ accesExterieurSide: side })}
-                      className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.accesExterieurSide === side ? 'bg-[#22c55e]/20 border border-[#22c55e]/50 text-[#22c55e]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                      className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.accesExterieurSide === side ? 'bg-[#22c55e]/20 border border-[#22c55e]/50 text-[#22c55e]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
                       {label}
                     </button>
                   ))}
                 </div>
-                <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+                <label className="flex items-center gap-1.5 text-[10px] text-[#86868b] cursor-pointer">
                   <input type="checkbox" checked={sm.accesExterieurPremierPalier} onChange={(e) => updateMaille({ accesExterieurPremierPalier: e.target.checked })}
                     className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
                   Premier palier uniquement
@@ -875,26 +875,26 @@ function ConfigPanel({
               </div>
             )}
             {/* Deport per maille */}
-            <div className="pt-1 border-t border-white/5">
+            <div className="pt-1 border-t border-black/[0.05]">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] text-[#3b82f6]">Deport (console)</label>
                 <Toggle checked={sm.deport} onChange={(v) => updateMaille({ deport: v })} />
               </div>
               {sm.deport && (
                 <div className="mt-1.5 space-y-1.5">
-                  <label className="text-[9px] text-[#888899] block">Longueur deport</label>
+                  <label className="text-[9px] text-[#86868b] block">Longueur deport</label>
                   <div className="flex flex-wrap gap-1">
                     {MOISE_LENGTHS.map((l) => (
                       <button key={`d-${l}`} onClick={() => updateMaille({ deportLongueur: l })}
-                        className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.deportLongueur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                        className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.deportLongueur === l ? 'bg-[#3b82f6]/10 border border-[#3b82f6]/30 text-[#3b82f6]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
                         {l}m
                       </button>
                     ))}
                   </div>
-                  <label className="text-[9px] text-[#888899] block">Cotes</label>
+                  <label className="text-[9px] text-[#86868b] block">Cotes</label>
                   <div className="grid grid-cols-2 gap-1">
                     {([['zmin', 'Avant'], ['zmax', 'Arriere'], ['xmin', 'Gauche'], ['xmax', 'Droite']] as [keyof DeportSides, string][]).map(([side, label]) => (
-                      <label key={side} className="flex items-center gap-1.5 text-[9px] text-[#888899] cursor-pointer">
+                      <label key={side} className="flex items-center gap-1.5 text-[9px] text-[#86868b] cursor-pointer">
                         <input type="checkbox" checked={sm.deportSides[side]}
                           onChange={(e) => updateMaille({ deportSides: { ...sm.deportSides, [side]: e.target.checked } })}
                           className="w-3 h-3 rounded accent-[#3b82f6]" />
@@ -902,16 +902,16 @@ function ConfigPanel({
                       </label>
                     ))}
                   </div>
-                  <label className="flex items-center gap-1.5 text-[9px] text-[#888899] cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-[9px] text-[#86868b] cursor-pointer">
                     <input type="checkbox" checked={sm.deportTousEtages} onChange={(e) => updateMaille({ deportTousEtages: e.target.checked })}
                       className="w-3 h-3 rounded accent-[#3b82f6]" />
                     Tous les etages
                   </label>
-                  <label className="text-[9px] text-[#888899] block">Sens plancher deport</label>
+                  <label className="text-[9px] text-[#86868b] block">Sens plancher deport</label>
                   <div className="flex gap-1">
                     {([['longueur', 'En longueur'], ['largeur', 'En largeur']] as [PlancherSens, string][]).map(([s, label]) => (
                       <button key={s} onClick={() => updateMaille({ deportPlancherSens: s })}
-                        className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.deportPlancherSens === s ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                        className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.deportPlancherSens === s ? 'bg-[#3b82f6]/10 border border-[#3b82f6]/30 text-[#3b82f6]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
                         {label}
                       </button>
                     ))}
@@ -922,33 +922,33 @@ function ConfigPanel({
           </div>
         )}
         {!sm && (
-          <p className="text-[9px] text-[#555566] text-center py-2">Selectionnez une maille pour voir ses options</p>
+          <p className="text-[9px] text-[#aeaeb2] text-center py-2">Selectionnez une maille pour voir ses options</p>
         )}
 
-        <div className="w-full h-px bg-white/5" />
+        <div className="w-full h-px bg-black/[0.05]" />
 
         {/* Options globales */}
         <div className="space-y-3">
-          <label className="text-[10px] text-[#555566] uppercase tracking-wider font-semibold block">Options generales</label>
+          <label className="text-[10px] text-[#aeaeb2] uppercase tracking-wider font-semibold block">Options generales</label>
 
           {/* Type interieur/exterieur */}
           <div>
-            <label className="text-[12px] text-[#888899] block mb-1.5">Type d'echafaudage</label>
+            <label className="text-[12px] text-[#86868b] block mb-1.5">Type d'echafaudage</label>
             <div className="flex gap-1.5">
               {(['interieur', 'exterieur'] as const).map((t) => (
                 <button key={t}
                   onClick={() => setConfig(p => ({ ...p, type: t }))}
                   className={`flex-1 py-1.5 text-[11px] rounded-lg transition-all font-medium text-center ${
                     config.type === t
-                      ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]'
-                      : 'bg-white/5 border border-white/10 text-[#888899] hover:border-white/20'
+                      ? 'bg-[#F2A900]/10 border border-[#F2A900]/30 text-[#c88800]'
+                      : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15]'
                   }`}>
                   {t === 'interieur' ? 'Interieur' : 'Exterieur'}
                 </button>
               ))}
             </div>
             {needsSapine(config) && (
-              <p className="text-[9px] text-[#e8c840]/70 mt-1">
+              <p className="text-[9px] text-[#c88800]/70 mt-1">
                 Sapine (contreventement) ajoutee automatiquement — {sapineLevels(config)} niveau{sapineLevels(config) > 1 ? 'x' : ''} de diagonales
               </p>
             )}
@@ -957,8 +957,8 @@ function ConfigPanel({
           {/* Verinage */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-[12px] text-[#888899] block">Verinage</label>
-              <span className="text-[9px] text-[#555566]">tube + 2 colliers + verin inverse</span>
+              <label className="text-[12px] text-[#86868b] block">Verinage</label>
+              <span className="text-[9px] text-[#aeaeb2]">tube + 2 colliers + verin inverse</span>
             </div>
             <Toggle checked={config.verinage} onChange={(v) => setConfig(p => ({ ...p, verinage: v }))} />
           </div>
@@ -966,8 +966,8 @@ function ConfigPanel({
           {/* Echelle */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-[12px] text-[#888899] block">Echelle interieure</label>
-              <span className="text-[9px] text-[#555566]">2.15m par trappe, alternance</span>
+              <label className="text-[12px] text-[#86868b] block">Echelle interieure</label>
+              <span className="text-[9px] text-[#aeaeb2]">2.15m par trappe, alternance</span>
             </div>
             <Toggle checked={config.echelle} onChange={(v) => setConfig(p => ({ ...p, echelle: v }))} />
           </div>
@@ -975,14 +975,14 @@ function ConfigPanel({
       </div>
 
       {/* Summary */}
-      <div className="px-4 py-3 border-t border-white/6 bg-white/[0.01] space-y-1">
+      <div className="px-4 py-3 border-t border-black/[0.06] bg-black/[0.01] space-y-1">
         <div className="flex items-center justify-between text-[11px]">
-          <span className="text-[#888899]">Pieces</span>
-          <span className="font-semibold text-[#e8c840]">{totalPieces}</span>
+          <span className="text-[#86868b]">Pieces</span>
+          <span className="font-semibold text-[#c88800]">{totalPieces}</span>
         </div>
         <div className="flex items-center justify-between text-[11px]">
-          <span className="text-[#888899]">Poids total</span>
-          <span className="font-semibold text-[#e8c840]">{totalWeight} kg</span>
+          <span className="text-[#86868b]">Poids total</span>
+          <span className="font-semibold text-[#c88800]">{totalWeight} kg</span>
         </div>
       </div>
     </div>
@@ -995,8 +995,8 @@ function ConfigPanel({
 function CanvasPanel({ plannerConfig }: { plannerConfig: PlannerConfig }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden w-full">
-      <div className="hidden sm:flex items-center gap-2 px-4 py-2 border-b border-white/6 bg-white/[0.01]">
-        <span className="text-[10px] text-[#555566]">Clic gauche : tourner &bull; Molette : zoom &bull; Clic droit : deplacer</span>
+      <div className="hidden sm:flex items-center gap-2 px-4 py-2 border-b border-black/[0.06] bg-black/[0.01]">
+        <span className="text-[10px] text-[#aeaeb2]">Clic gauche : tourner &bull; Molette : zoom &bull; Clic droit : deplacer</span>
       </div>
       <div className="flex-1 relative">
         <ScaffoldViewer3D plannerConfig={plannerConfig} />
@@ -1082,8 +1082,8 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
   };
 
   return (
-    <div className="w-full sm:w-[340px] sm:min-w-[340px] glass-panel sm:border-l border-white/6 flex flex-col overflow-hidden">
-      <div className="px-4 py-3 border-b border-white/6 flex items-center justify-between">
+    <div className="w-full sm:w-[340px] sm:min-w-[340px] glass-panel sm:border-l border-black/[0.06] flex flex-col overflow-hidden">
+      <div className="px-4 py-3 border-b border-black/[0.06] flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Package size={14} className="text-[#3b82f6]" />
           <span className="text-xs font-semibold">Feuille de calcul</span>
@@ -1103,11 +1103,11 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
       <div className="flex-1 overflow-y-auto">
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="sticky top-0 bg-[#0a0a0f] z-10">
-              <th className="text-left px-4 py-2 text-[#888899] font-medium">Piece</th>
-              <th className="text-center px-1 py-2 text-[#888899] font-medium w-20">Qte</th>
-              <th className="text-right px-2 py-2 text-[#888899] font-medium w-14">kg/u</th>
-              <th className="text-right px-4 py-2 text-[#888899] font-medium w-14">kg</th>
+            <tr className="sticky top-0 bg-white z-10">
+              <th className="text-left px-4 py-2 text-[#86868b] font-medium">Piece</th>
+              <th className="text-center px-1 py-2 text-[#86868b] font-medium w-20">Qte</th>
+              <th className="text-right px-2 py-2 text-[#86868b] font-medium w-14">kg/u</th>
+              <th className="text-right px-4 py-2 text-[#86868b] font-medium w-14">kg</th>
             </tr>
           </thead>
           <tbody>
@@ -1125,11 +1125,11 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
             })}
           </tbody>
           <tfoot>
-            <tr className="border-t border-white/8">
+            <tr className="border-t border-black/[0.08]">
               <td className="px-4 py-2.5 font-semibold text-[12px]">Total</td>
               <td className="text-center px-1 py-2.5 font-semibold text-[12px]">{totalPieces}</td>
               <td />
-              <td className="text-right px-4 py-2.5 font-semibold text-[12px] text-[#e8c840]">{totalWeight} kg</td>
+              <td className="text-right px-4 py-2.5 font-semibold text-[12px] text-[#c88800]">{totalWeight} kg</td>
             </tr>
           </tfoot>
         </table>
@@ -1146,47 +1146,47 @@ function CatGroup({ cat, items, isCollapsed, onToggle, catWeight, catCount, adju
 }) {
   return (
     <>
-      <tr className="cursor-pointer hover:bg-white/[0.03] transition-colors" onClick={onToggle}>
-        <td className="px-4 py-1.5 text-[10px] font-semibold text-[#e8c840]/80 uppercase tracking-wider" colSpan={2}>
+      <tr className="cursor-pointer hover:bg-black/[0.02] transition-colors" onClick={onToggle}>
+        <td className="px-4 py-1.5 text-[10px] font-semibold text-[#c88800]/80 uppercase tracking-wider" colSpan={2}>
           <span className="inline-flex items-center gap-1">
             {isCollapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
-            {cat} <span className="text-[#888899] font-normal ml-1">({catCount})</span>
+            {cat} <span className="text-[#86868b] font-normal ml-1">({catCount})</span>
           </span>
         </td>
         <td />
-        <td className="text-right px-4 py-1.5 text-[10px] text-[#888899] font-medium">{catWeight}</td>
+        <td className="text-right px-4 py-1.5 text-[10px] text-[#86868b] font-medium">{catWeight}</td>
       </tr>
       {!isCollapsed && items.map((it, i) => {
         const adj = adjustments[it.name] || 0;
         const isChecked = checkedItems.has(it.name);
         return (
-          <tr key={`${it.name}-${i}`} className={`hover:bg-white/[0.02] transition-colors group ${isChecked ? 'opacity-40' : ''}`}>
+          <tr key={`${it.name}-${i}`} className={`hover:bg-black/[0.02] transition-colors group ${isChecked ? 'opacity-40' : ''}`}>
             <td className="pl-6 pr-1 py-1 truncate max-w-[180px]">
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={isChecked}
                   onChange={() => onToggleChecked(it.name)}
-                  className="w-3 h-3 rounded border-white/20 bg-white/5 accent-green-500 cursor-pointer"
+                  className="w-3 h-3 rounded border-black/[0.1] bg-black/[0.02] accent-green-500 cursor-pointer"
                 />
-                <span className={`text-white/60 ${isChecked ? 'line-through' : ''}`}>{it.name}</span>
+                <span className={`text-[#6e6e73] ${isChecked ? 'line-through' : ''}`}>{it.name}</span>
               </label>
             </td>
             <td className="text-center px-1 py-1">
               <span className="inline-flex items-center gap-0.5">
                 <button
                   onClick={(e) => { e.stopPropagation(); onAdjust(it.name, -1); }}
-                  className="w-4 h-4 rounded text-[10px] leading-none bg-white/5 hover:bg-red-500/30 text-white/40 hover:text-red-300 transition-colors flex items-center justify-center"
+                  className="w-4 h-4 rounded text-[10px] leading-none bg-black/[0.03] hover:bg-red-500/10 text-[#aeaeb2] hover:text-red-500 transition-colors flex items-center justify-center"
                   disabled={it.count <= 0}
                 >−</button>
                 <span className={`tabular-nums font-medium w-6 text-center text-[11px] ${adj !== 0 ? 'text-orange-400' : ''}`}>{it.count}</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); onAdjust(it.name, 1); }}
-                  className="w-4 h-4 rounded text-[10px] leading-none bg-white/5 hover:bg-green-500/30 text-white/40 hover:text-green-300 transition-colors flex items-center justify-center"
+                  className="w-4 h-4 rounded text-[10px] leading-none bg-black/[0.03] hover:bg-green-500/10 text-[#aeaeb2] hover:text-green-500 transition-colors flex items-center justify-center"
                 >+</button>
               </span>
             </td>
-            <td className={`text-right px-2 py-1 tabular-nums text-[#666677] ${isChecked ? 'line-through' : ''}`}>{it.unitWeight}</td>
+            <td className={`text-right px-2 py-1 tabular-nums text-[#aeaeb2] ${isChecked ? 'line-through' : ''}`}>{it.unitWeight}</td>
             <td className={`text-right px-4 py-1 tabular-nums ${isChecked ? 'line-through' : ''}`}>{Math.round(it.count * it.unitWeight * 10) / 10}</td>
           </tr>
         );
@@ -1229,16 +1229,14 @@ export function PlannerView() {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0f] animate-fade-in">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#f5f5f7] animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/6 glass-panel">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-[#e8c840]/10 border border-[#e8c840]/20 flex items-center justify-center shrink-0">
-            <Ruler size={14} className="text-[#e8c840]" />
-          </div>
+      <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 border-b border-black/[0.06] bg-white/80 backdrop-blur-xl">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/sixty/Orano_logo.svg/120px-Orano_logo.svg.png" alt="Orano" className="h-6 sm:h-7 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <div className="min-w-0">
-            <h1 className="text-xs sm:text-sm font-semibold truncate">Orano echaf' belleville</h1>
-            <p className="text-[8px] sm:text-[9px] text-[#555566] truncate">
+            <h1 className="text-xs sm:text-sm font-semibold text-[#1d1d1f] truncate tracking-tight">Echaf' Belleville</h1>
+            <p className="text-[8px] sm:text-[9px] text-[#86868b] truncate">
               {config.mailles.length} maille{config.mailles.length > 1 ? 's' : ''}
               &bull; H{Math.max(...config.mailles.map(m => m.hauteurPlancher))}m
               &bull; {totalPieces} pcs / {totalWeight} kg
@@ -1247,21 +1245,21 @@ export function PlannerView() {
         </div>
         <button
           onClick={() => setShowPlanner(false)}
-          className="p-1.5 rounded-md hover:bg-white/[0.06] text-[#888899] hover:text-white/80 transition-colors shrink-0"
+          className="p-1.5 rounded-lg hover:bg-black/[0.04] text-[#86868b] hover:text-[#1d1d1f] transition-colors shrink-0"
         >
           <X size={14} />
         </button>
       </div>
 
-      {/* Mobile tabs — visible uniquement < 768px */}
-      <div className="flex sm:hidden border-b border-white/6">
+      {/* Mobile tabs */}
+      <div className="flex sm:hidden border-b border-black/[0.06] bg-white">
         {tabs.map((t) => (
           <button key={t.id}
             onClick={() => setMobileTab(t.id)}
             className={`flex-1 py-2.5 text-[11px] font-medium transition-all ${
               mobileTab === t.id
-                ? 'text-[#e8c840] border-b-2 border-[#e8c840] bg-[#e8c840]/5'
-                : 'text-[#666677]'
+                ? 'text-[#F2A900] border-b-2 border-[#F2A900] bg-[#F2A900]/5'
+                : 'text-[#86868b]'
             }`}>
             {t.label}
           </button>
