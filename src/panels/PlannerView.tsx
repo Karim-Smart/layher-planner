@@ -353,16 +353,20 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   }
 
   // --- DEPORT (per maille) ---
+  // Dedupliquer les poteaux 1m du deport par position
+  const deportPoteauSet = new Set<string>();
   for (const m of pc.mailles) {
     if (!m.deport || m.deportLongueur <= 0) continue;
     const r = getMailleRect(m);
     const dL = closestLedger(m.deportLongueur);
     const nbEtages = m.deportTousEtages ? levels.length : 1;
 
-    const addDeportForSide = (mLen: number, isXaxis: boolean) => {
+    const addDeportForSide = (mLen: number, isXaxis: boolean, p1x: number, p1z: number, p2x: number, p2z: number) => {
       const ml = closestLedger(mLen);
       items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
-      items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: 2 * nbEtages, unitWeight: 3.7 });
+      // Poteaux 1m dedupliques par position
+      deportPoteauSet.add(`${p1x.toFixed(3)},${p1z.toFixed(3)}`);
+      deportPoteauSet.add(`${p2x.toFixed(3)},${p2z.toFixed(3)}`);
       items.push({ name: `${isXaxis ? 'Moise' : 'U'} bout ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
       items.push({ name: `Plateau deport ${ml}x${dL}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * dL * 10 * 10) / 10 });
       items.push({ name: `Moise GC ${ml}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
@@ -370,12 +374,15 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
       items.push({ name: `Plinthe ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 1.5 * 10) / 10 });
       items.push({ name: `Plinthe ${dL}m (deport)`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 1.5 * 10) / 10 });
     };
-    const mLen_x = r.x2 - r.x1; // longueur en X de cette maille
-    const mLen_z = r.z2 - r.z1; // longueur en Z de cette maille
-    if (m.deportSides.zmin) addDeportForSide(mLen_x, true);
-    if (m.deportSides.zmax) addDeportForSide(mLen_x, true);
-    if (m.deportSides.xmin) addDeportForSide(mLen_z, false);
-    if (m.deportSides.xmax) addDeportForSide(mLen_z, false);
+    const mLen_x = r.x2 - r.x1;
+    const mLen_z = r.z2 - r.z1;
+    if (m.deportSides.zmin) addDeportForSide(mLen_x, true, r.x1, r.z1 - dL, r.x2, r.z1 - dL);
+    if (m.deportSides.zmax) addDeportForSide(mLen_x, true, r.x1, r.z2 + dL, r.x2, r.z2 + dL);
+    if (m.deportSides.xmin) addDeportForSide(mLen_z, false, r.x1 - dL, r.z1, r.x1 - dL, r.z2);
+    if (m.deportSides.xmax) addDeportForSide(mLen_z, false, r.x2 + dL, r.z1, r.x2 + dL, r.z2);
+  }
+  if (deportPoteauSet.size > 0) {
+    items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: deportPoteauSet.size, unitWeight: 3.7 });
   }
 
   // --- Extras ---
