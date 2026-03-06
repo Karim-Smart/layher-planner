@@ -152,7 +152,7 @@ function Clamp({ x, y, z }: { x: number; y: number; z: number }) {
 // SCENE
 // ==========================================
 function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
-  const { hauteurPlancher, mailles, deport, deportLongueur, deportSides, deportTousEtages, verinage, echelle } = pc;
+  const { hauteurPlancher, mailles, verinage, echelle } = pc;
   const maxH = hauteurPlancher + 1;
   const jackH = 0.40 + 0.15; // base jack 40cm + plate
 
@@ -224,15 +224,12 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
       const r = rects[mi];
       const segs = getOpenSegments(r, rects);
 
-      // Retirer les cotes couverts par un deport
-      if (deport && deportLongueur > 0) {
-        let gXmin = Infinity, gXmax = -Infinity, gZmin = Infinity, gZmax = -Infinity;
-        for (const rr of rects) { gXmin = Math.min(gXmin, rr.x1); gXmax = Math.max(gXmax, rr.x2); gZmin = Math.min(gZmin, rr.z1); gZmax = Math.max(gZmax, rr.z2); }
-        const eps = 0.02;
-        if (deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) segs.zmin = [];
-        if (deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) segs.zmax = [];
-        if (deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) segs.xmin = [];
-        if (deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) segs.xmax = [];
+      // Retirer les cotes couverts par un deport (per maille)
+      if (m.deport && m.deportLongueur > 0) {
+        if (m.deportSides.zmin) segs.zmin = [];
+        if (m.deportSides.zmax) segs.zmax = [];
+        if (m.deportSides.xmin) segs.xmin = [];
+        if (m.deportSides.xmax) segs.xmax = [];
       }
 
       const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
@@ -496,31 +493,29 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         els.push(<Tube key={key()} start={[r0.x1, y, sapZ]} end={[r0.x2, y, sapZ]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
       }
 
-      const yBot = jackH;
-      const ySapTop = jackH + sapPoteauH; // haut des poteaux sapine
-      const yTop = jackH + level2;        // 2eme plancher echaff
+      const y1 = jackH + level1; // 1er plancher
+      const y2 = jackH + level2; // 2eme plancher
 
-      // Diagonales face avant (structure sapine, entre les 2 poteaux sapine, z = sapZ)
-      els.push(<Tube key={key()} start={[r0.x1, yBot, sapZ]} end={[r0.x2, ySapTop, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-      els.push(<Tube key={key()} start={[r0.x2, yBot, sapZ]} end={[r0.x1, ySapTop, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-
-      // Diagonales laterales (sapine → echaff, montent au 2eme plancher)
-      els.push(<Tube key={key()} start={[r0.x1, yBot, sapZ]} end={[r0.x1, yTop, r0.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-      els.push(<Tube key={key()} start={[r0.x1, yBot, r0.z1]} end={[r0.x1, yTop, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-      els.push(<Tube key={key()} start={[r0.x2, yBot, sapZ]} end={[r0.x2, yTop, r0.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-      els.push(<Tube key={key()} start={[r0.x2, yBot, r0.z1]} end={[r0.x2, yTop, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+      // Diagonales entre 1er et 2eme plancher — tour complet de la sapine
+      // Face avant (entre les 2 poteaux sapine, z = sapZ)
+      els.push(<Tube key={key()} start={[r0.x1, y1, sapZ]} end={[r0.x2, y2, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+      els.push(<Tube key={key()} start={[r0.x2, y1, sapZ]} end={[r0.x1, y2, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+      // Cote gauche (x = r0.x1, entre sapZ et r0.z1)
+      els.push(<Tube key={key()} start={[r0.x1, y1, sapZ]} end={[r0.x1, y2, r0.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+      els.push(<Tube key={key()} start={[r0.x1, y1, r0.z1]} end={[r0.x1, y2, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+      // Cote droit (x = r0.x2, entre sapZ et r0.z1)
+      els.push(<Tube key={key()} start={[r0.x2, y1, sapZ]} end={[r0.x2, y2, r0.z1]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+      els.push(<Tube key={key()} start={[r0.x2, y1, r0.z1]} end={[r0.x2, y2, sapZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
     }
 
-    // --- DEPORT (consoles) ---
-    if (deport && deportLongueur > 0 && rects.length > 0) {
-      const offset = closestLedger(deportLongueur);
-      let globalXmin = Infinity, globalXmax = -Infinity, globalZmin = Infinity, globalZmax = -Infinity;
-      for (const r of rects) { globalXmin = Math.min(globalXmin, r.x1); globalXmax = Math.max(globalXmax, r.x2); globalZmin = Math.min(globalZmin, r.z1); globalZmax = Math.max(globalZmax, r.z2); }
+    // --- DEPORT (consoles) per maille ---
+    for (let mi = 0; mi < mailles.length; mi++) {
+      const dm = mailles[mi];
+      if (!dm.deport || dm.deportLongueur <= 0) continue;
+      const dr = rects[mi];
+      const offset = closestLedger(dm.deportLongueur);
+      const deportLevels = dm.deportTousEtages ? levels : [topLevel];
 
-      const deportLevels = deportTousEtages ? levels : [topLevel];
-
-      // Deport simplifie : equerres (moise + 2 diag dessous) + poteaux 1m au bout + moise bout + plateforme
-      // Pas de GC/plinthes cote echaff (acces libre), GC/plinthes sur 3 cotes exterieurs
       const renderConsole = (xBase: number, zBase: number, dx: number, dz: number, lenX: number, lenZ: number) => {
         for (const lh of deportLevels) {
           const cy = jackH + lh;
@@ -528,51 +523,39 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
           const zEnd = zBase + dz * offset;
           const xMin = Math.min(xBase, xEnd);
           const zMin = Math.min(zBase, zEnd);
-          const isX = Math.abs(dx) > 0; // deport en X
+          const isX = Math.abs(dx) > 0;
 
           if (isX) {
-            // Equerres : moise horizontale + diag dessous (face avant + arriere)
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xEnd, cy, zBase]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xEnd, cy - 0.5, zBase]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zBase + lenZ]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zBase + lenZ]} end={[xEnd, cy - 0.5, zBase + lenZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-            // Poteaux 1m au bout
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy + 1, zBase]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase + lenZ]} end={[xEnd, cy + 1, zBase + lenZ]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
-            // Moise au bout
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            // Plateforme
             els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} />);
-            // GC sur 3 cotes exterieurs seulement (pas cote echaff)
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase]} end={[xMin + offset, cy + gcH, zBase]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase + lenZ]} end={[xMin + offset, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xEnd, cy + gcH, zBase]} end={[xEnd, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
             }
-            // Plinthes sur 3 cotes exterieurs
             els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase} />);
             els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase + lenZ} />);
             els.push(<ToeboardV key={key()} x={xEnd} y={cy} z1={zBase} z2={zBase + lenZ} />);
           } else {
-            // Deport en Z
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xBase, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xBase, cy - 0.5, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zBase]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zBase]} end={[xBase + lenX, cy - 0.5, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
-            // Poteaux 1m au bout
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zEnd]} end={[xBase + lenX, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
-            // Moise au bout
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            // Plateforme
             els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} />);
-            // GC sur 3 cotes exterieurs (pas cote echaff)
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xBase, cy + gcH, zMin]} end={[xBase, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xBase + lenX, cy + gcH, zMin]} end={[xBase + lenX, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xBase, cy + gcH, zEnd]} end={[xBase + lenX, cy + gcH, zEnd]} radius={GC_RADIUS} color={GOLD_COLOR} />);
             }
-            // Plinthes sur 3 cotes exterieurs
             els.push(<ToeboardV key={key()} x={xBase} y={cy} z1={zMin} z2={zMin + offset} />);
             els.push(<ToeboardV key={key()} x={xBase + lenX} y={cy} z1={zMin} z2={zMin + offset} />);
             els.push(<ToeboardH key={key()} x1={xBase} x2={xBase + lenX} y={cy} z={zEnd} />);
@@ -580,46 +563,10 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         }
       };
 
-      const dEps = 0.02;
-
-      // Fusionner les segments adjacents pour un deport continu
-      const mergeRanges = (ranges: [number, number][]): [number, number][] => {
-        if (ranges.length === 0) return [];
-        const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
-        const merged: [number, number][] = [sorted[0]];
-        for (let i = 1; i < sorted.length; i++) {
-          const last = merged[merged.length - 1];
-          if (sorted[i][0] <= last[1] + dEps) {
-            last[1] = Math.max(last[1], sorted[i][1]);
-          } else {
-            merged.push(sorted[i]);
-          }
-        }
-        return merged;
-      };
-
-      // zmin/zmax : fusionner les mailles en X, rendre un deport par segment continu
-      if (deportSides.zmin) {
-        const ranges: [number, number][] = [];
-        for (const r of rects) { if (Math.abs(r.z1 - globalZmin) < dEps) ranges.push([r.x1, r.x2]); }
-        for (const [x1, x2] of mergeRanges(ranges)) renderConsole(x1, globalZmin, 0, -1, x2 - x1, 0);
-      }
-      if (deportSides.zmax) {
-        const ranges: [number, number][] = [];
-        for (const r of rects) { if (Math.abs(r.z2 - globalZmax) < dEps) ranges.push([r.x1, r.x2]); }
-        for (const [x1, x2] of mergeRanges(ranges)) renderConsole(x1, globalZmax, 0, 1, x2 - x1, 0);
-      }
-      // xmin/xmax : fusionner les mailles en Z
-      if (deportSides.xmin) {
-        const ranges: [number, number][] = [];
-        for (const r of rects) { if (Math.abs(r.x1 - globalXmin) < dEps) ranges.push([r.z1, r.z2]); }
-        for (const [z1, z2] of mergeRanges(ranges)) renderConsole(globalXmin, z1, -1, 0, 0, z2 - z1);
-      }
-      if (deportSides.xmax) {
-        const ranges: [number, number][] = [];
-        for (const r of rects) { if (Math.abs(r.x2 - globalXmax) < dEps) ranges.push([r.z1, r.z2]); }
-        for (const [z1, z2] of mergeRanges(ranges)) renderConsole(globalXmax, z1, 1, 0, 0, z2 - z1);
-      }
+      if (dm.deportSides.zmin) renderConsole(dr.x1, dr.z1, 0, -1, dr.x2 - dr.x1, 0);
+      if (dm.deportSides.zmax) renderConsole(dr.x1, dr.z2, 0, 1, dr.x2 - dr.x1, 0);
+      if (dm.deportSides.xmin) renderConsole(dr.x1, dr.z1, -1, 0, 0, dr.z2 - dr.z1);
+      if (dm.deportSides.xmax) renderConsole(dr.x2, dr.z1, 1, 0, 0, dr.z2 - dr.z1);
     }
 
     return els;

@@ -35,6 +35,10 @@ export interface MailleConfig {
   accesExterieur: boolean;       // acces depuis l'exterieur avec crinoline
   accesExterieurSide: AccesSide; // cote de l'acces
   accesExterieurPremierPalier: boolean; // acces uniquement au premier palier
+  deport: boolean;
+  deportLongueur: number;
+  deportSides: DeportSides;
+  deportTousEtages: boolean;
 }
 
 export interface DeportSides {
@@ -48,10 +52,6 @@ export interface PlannerConfig {
   hauteurPlancher: number;
   mailles: MailleConfig[];
   type: 'interieur' | 'exterieur';
-  deport: boolean;
-  deportLongueur: number;
-  deportSides: DeportSides;
-  deportTousEtages: boolean;
   verinage: boolean;
   echelle: boolean;
 }
@@ -231,15 +231,22 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   }
 
   // --- PLATEFORMES ---
-  // Mailles pleines : plateforme a tous les niveaux
-  // Mailles a vide : plateforme uniquement au dernier niveau (top)
+  // Mailles pleines : trappe (avec echelle) ou plateau (sans) a tous les niveaux
+  // Mailles a vide : plateau uniquement au dernier niveau (top)
   const maillesPleines = pc.mailles.filter(m => !m.aVide);
   const maillesVides = pc.mailles.filter(m => m.aVide);
-  const nbPlatPleines = maillesPleines.length * levels.length;
-  const nbPlatVides = maillesVides.length; // 1 plateforme au top uniquement
-  const nbPlat = nbPlatPleines + nbPlatVides;
-  if (nbPlat > 0) {
-    items.push({ name: 'Plateforme', category: 'Plateformes', count: nbPlat, unitWeight: 15.0 });
+  if (pc.echelle) {
+    // Avec echelle : trappes d'acces a chaque niveau sur les mailles pleines
+    const nbTrappes = maillesPleines.length * levels.length;
+    if (nbTrappes > 0) items.push({ name: 'Trappe', category: 'Plateformes', count: nbTrappes, unitWeight: 15.0 });
+  } else {
+    // Sans echelle : plateaux pleins
+    const nbPlateaux = maillesPleines.length * levels.length;
+    if (nbPlateaux > 0) items.push({ name: 'Plateau', category: 'Plateformes', count: nbPlateaux, unitWeight: 15.0 });
+  }
+  // Mailles a vide : 1 plateau au top
+  if (maillesVides.length > 0) {
+    items.push({ name: 'Plateau', category: 'Plateformes', count: maillesVides.length, unitWeight: 15.0 });
   }
 
   // Diagonales : mailles pleines = 2 au 1er niveau, mailles a vide = 2 par niveau
@@ -253,9 +260,6 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   // --- GC (= moises) et plinthes ---
   // Mailles pleines : GC a tous les niveaux sur cotes ouverts
   // Mailles a vide : GC uniquement au top (1 niveau) sur cotes ouverts
-  // Bornes globales pour detecter cotes deport
-  let gXmin = Infinity, gXmax = -Infinity, gZmin = Infinity, gZmax = -Infinity;
-  for (const r of rects) { gXmin = Math.min(gXmin, r.x1); gXmax = Math.max(gXmax, r.x2); gZmin = Math.min(gZmin, r.z1); gZmax = Math.max(gZmax, r.z2); }
   const eps = 0.02;
 
   const gcByLen: Record<string, number> = {};
@@ -268,12 +272,12 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   for (const m of pc.mailles) {
     const r = getMailleRect(m);
     const segs = getOpenSegments(r, rects);
-    // Retirer les cotes couverts par un deport (acces libre)
-    if (pc.deport && pc.deportLongueur > 0) {
-      if (pc.deportSides.zmin && Math.abs(r.z1 - gZmin) < eps) segs.zmin = [];
-      if (pc.deportSides.zmax && Math.abs(r.z2 - gZmax) < eps) segs.zmax = [];
-      if (pc.deportSides.xmin && Math.abs(r.x1 - gXmin) < eps) segs.xmin = [];
-      if (pc.deportSides.xmax && Math.abs(r.x2 - gXmax) < eps) segs.xmax = [];
+    // Retirer les cotes couverts par un deport (acces libre) — per maille
+    if (m.deport && m.deportLongueur > 0) {
+      if (m.deportSides.zmin) segs.zmin = [];
+      if (m.deportSides.zmax) segs.zmax = [];
+      if (m.deportSides.xmin) segs.xmin = [];
+      if (m.deportSides.xmax) segs.xmax = [];
     }
     const accesSide = m.accesExterieur ? m.accesExterieurSide : null;
     const nbNiveaux = m.aVide ? 1 : levels.length;
@@ -347,73 +351,30 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     items.push({ name: 'Diagonale sapine', category: 'Sapine', count: 6, unitWeight: 5.5 });
   }
 
-  // --- DEPORT (detail piece par piece, par maille au bord) ---
-  if (pc.deport && pc.deportLongueur > 0) {
-    const dL = closestLedger(pc.deportLongueur);
-    const nbEtages = pc.deportTousEtages ? levels.length : 1;
-    const sides = pc.deportSides;
+  // --- DEPORT (per maille) ---
+  for (const m of pc.mailles) {
+    if (!m.deport || m.deportLongueur <= 0) continue;
+    const r = getMailleRect(m);
+    const dL = closestLedger(m.deportLongueur);
+    const nbEtages = m.deportTousEtages ? levels.length : 1;
 
-    // Bornes globales
-    let dGXmin = Infinity, dGXmax = -Infinity, dGZmin = Infinity, dGZmax = -Infinity;
-    for (const r of rects) { dGXmin = Math.min(dGXmin, r.x1); dGXmax = Math.max(dGXmax, r.x2); dGZmin = Math.min(dGZmin, r.z1); dGZmax = Math.max(dGZmax, r.z2); }
-
-    // Helper : pour chaque maille touchant un bord, generer le BOM du deport
-    const addDeportForMaille = (mLen: number, isXaxis: boolean) => {
+    const addDeportForSide = (mLen: number, isXaxis: boolean) => {
       const ml = closestLedger(mLen);
-      // 2 equerres (1 par poteau)
       items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
-      // 2 poteaux 1m au bout
       items.push({ name: 'Poteau 1m (deport)', category: 'Consoles', count: 2 * nbEtages, unitWeight: 3.7 });
-      // Moise au bout
       items.push({ name: `${isXaxis ? 'Moise' : 'U'} bout ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
-      // Plateforme
-      items.push({ name: `Plateforme deport ${ml}x${dL}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * dL * 10 * 10) / 10 });
-      // GC 3 cotes ext x 2 barres
+      items.push({ name: `Plateau deport ${ml}x${dL}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * dL * 10 * 10) / 10 });
       items.push({ name: `Moise GC ${ml}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
       items.push({ name: `Moise GC ${dL}m (deport retour)`, category: 'Moises', count: 2 * nbEtages * 2, unitWeight: Math.round(dL * 3.5 * 10) / 10 });
-      // Plinthes 3 cotes ext
       items.push({ name: `Plinthe ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 1.5 * 10) / 10 });
       items.push({ name: `Plinthe ${dL}m (deport)`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 1.5 * 10) / 10 });
     };
-
-    const dEps = 0.02;
-    // Fusionner les mailles adjacentes en segments continus
-    const mergeRanges = (ranges: [number, number][]): [number, number][] => {
-      if (ranges.length === 0) return [];
-      const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
-      const merged: [number, number][] = [sorted[0]];
-      for (let i = 1; i < sorted.length; i++) {
-        const last = merged[merged.length - 1];
-        if (sorted[i][0] <= last[1] + dEps) {
-          last[1] = Math.max(last[1], sorted[i][1]);
-        } else {
-          merged.push(sorted[i]);
-        }
-      }
-      return merged;
-    };
-    // zmin/zmax : fusionner en X
-    if (sides.zmin) {
-      const ranges: [number, number][] = [];
-      for (const r of rects) { if (Math.abs(r.z1 - dGZmin) < dEps) ranges.push([r.x1, r.x2]); }
-      for (const [x1, x2] of mergeRanges(ranges)) addDeportForMaille(x2 - x1, true);
-    }
-    if (sides.zmax) {
-      const ranges: [number, number][] = [];
-      for (const r of rects) { if (Math.abs(r.z2 - dGZmax) < dEps) ranges.push([r.x1, r.x2]); }
-      for (const [x1, x2] of mergeRanges(ranges)) addDeportForMaille(x2 - x1, true);
-    }
-    // xmin/xmax : fusionner en Z
-    if (sides.xmin) {
-      const ranges: [number, number][] = [];
-      for (const r of rects) { if (Math.abs(r.x1 - dGXmin) < dEps) ranges.push([r.z1, r.z2]); }
-      for (const [z1, z2] of mergeRanges(ranges)) addDeportForMaille(z2 - z1, false);
-    }
-    if (sides.xmax) {
-      const ranges: [number, number][] = [];
-      for (const r of rects) { if (Math.abs(r.x2 - dGXmax) < dEps) ranges.push([r.z1, r.z2]); }
-      for (const [z1, z2] of mergeRanges(ranges)) addDeportForMaille(z2 - z1, false);
-    }
+    const mLen_x = r.x2 - r.x1; // longueur en X de cette maille
+    const mLen_z = r.z2 - r.z1; // longueur en Z de cette maille
+    if (m.deportSides.zmin) addDeportForSide(mLen_x, true);
+    if (m.deportSides.zmax) addDeportForSide(mLen_x, true);
+    if (m.deportSides.xmin) addDeportForSide(mLen_z, false);
+    if (m.deportSides.xmax) addDeportForSide(mLen_z, false);
   }
 
   // --- Extras ---
@@ -453,14 +414,12 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 // 2D LAYOUT EDITOR (vue du dessus)
 // ==========================================
 function LayoutEditor({
-  config, setConfig, selected, setSelected, updateMailleLongueur, updateMailleLargeur,
+  config, setConfig, selected, setSelected,
 }: {
   config: PlannerConfig;
   setConfig: React.Dispatch<React.SetStateAction<PlannerConfig>>;
   selected: string | null;
   setSelected: (id: string | null) => void;
-  updateMailleLongueur: (l: number) => void;
-  updateMailleLargeur: (l: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState<{ id: string; startMx: number; startMz: number; origX: number; origZ: number } | null>(null);
@@ -652,102 +611,11 @@ function LayoutEditor({
               fill={isSel ? '#e8c840' : '#888899'}
               fontSize={10} fontWeight={600}
             >
-              {closestLedger(m.longueur)}×{closestLedger(m.largeur)}{m.aVide ? ' ∅' : ''}{m.accesExterieur ? ' ⇄' : ''}
+              {closestLedger(m.longueur)}×{closestLedger(m.largeur)}{m.aVide ? ' ∅' : ''}{m.accesExterieur ? ' ⇄' : ''}{m.deport ? ' ⌐' : ''}
             </text>
           </g>
         );
       })}
-      {/* Popup contextuel sur maille selectionnee */}
-      {selected && (() => {
-        const sm = config.mailles.find(m => m.id === selected);
-        if (!sm) return null;
-        const sr = getMailleRect(sm);
-        const popWanted = 270;
-        const popH = sm.accesExterieur ? 240 : 170;
-        // Positionner le popup pour qu'il reste visible
-        let popX = toSvgX(sr.x1);
-        let popY = toSvgY(sr.z2) + 4;
-        // Si deborde a droite, decaler a gauche
-        if (popX + popWanted > svgW) popX = Math.max(0, svgW - popWanted - 4);
-        // Si deborde en bas, mettre au-dessus de la maille
-        if (popY + popH > svgH) popY = Math.max(0, toSvgY(sr.z1) - popH - 4);
-        return (
-          <foreignObject x={popX} y={popY} width={popWanted} height={popH} style={{ overflow: 'visible' }}>
-            <div className="bg-[#16161e] border border-white/10 rounded-lg p-2.5 space-y-1.5 shadow-xl" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
-              <div>
-                <label className="text-[9px] text-[#888899] block mb-1">Longueur</label>
-                <div className="flex flex-wrap gap-1">
-                  {MOISE_LENGTHS.map((l) => (
-                    <button key={`l-${l}`} onClick={() => updateMailleLongueur(l)}
-                      className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.longueur === l ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
-                      {l}m
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-[9px] text-[#888899] block mb-1">Profondeur</label>
-                <div className="flex flex-wrap gap-1">
-                  {MOISE_LENGTHS.map((l) => (
-                    <button key={`w-${l}`} onClick={() => updateMailleLargeur(l)}
-                      className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
-                      {l}m
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
-                  <input type="checkbox" checked={sm.aVide}
-                    onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, aVide: e.target.checked } : m) }))}
-                    className="w-3.5 h-3.5 rounded accent-[#e8c840]" />
-                  Vide
-                </label>
-                <label className="flex items-center gap-1.5 text-[10px] text-[#22c55e] cursor-pointer">
-                  <input type="checkbox" checked={sm.accesExterieur}
-                    onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, accesExterieur: e.target.checked } : m) }))}
-                    className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
-                  Acces ext.
-                </label>
-                <div className="flex gap-1.5">
-                  <button onClick={() => {
-                    setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, rotation: m.rotation === 0 ? 90 : 0 as 0 | 90 } : m) }));
-                  }} className="p-1.5 rounded bg-white/5 border border-white/10 text-[#888899] hover:text-white/80 active:scale-90" title="Tourner">
-                    <RotateCw size={12} />
-                  </button>
-                  <button onClick={() => {
-                    if (config.mailles.length <= 1) return;
-                    setConfig(prev => ({ ...prev, mailles: prev.mailles.filter(m => m.id !== selected) }));
-                    setSelected(null);
-                  }} disabled={config.mailles.length <= 1}
-                    className="p-1.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-90 disabled:opacity-30" title="Supprimer">
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-              {sm.accesExterieur && (
-                <div className="space-y-1.5 pt-1 border-t border-white/5">
-                  <label className="text-[9px] text-[#22c55e] block">Cote acces (crinoline + portillon)</label>
-                  <div className="flex gap-1">
-                    {([['zmin', 'Avant'], ['zmax', 'Arriere'], ['xmin', 'Gauche'], ['xmax', 'Droite']] as [AccesSide, string][]).map(([side, label]) => (
-                      <button key={side} onClick={() => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, accesExterieurSide: side } : m) }))}
-                        className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.accesExterieurSide === side ? 'bg-[#22c55e]/20 border border-[#22c55e]/50 text-[#22c55e]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
-                    <input type="checkbox" checked={sm.accesExterieurPremierPalier}
-                      onChange={(e) => setConfig(prev => ({ ...prev, mailles: prev.mailles.map(m => m.id === selected ? { ...m, accesExterieurPremierPalier: e.target.checked } : m) }))}
-                      className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
-                    Premier palier uniquement
-                  </label>
-                </div>
-              )}
-            </div>
-          </foreignObject>
-        );
-      })()}
     </svg>
   );
 }
@@ -777,7 +645,7 @@ function ConfigPanel({
     const id = String(nextId.current++);
     setConfig(prev => ({
       ...prev,
-      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false }],
+      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false }],
     }));
     setSelected(id);
   };
@@ -796,21 +664,15 @@ function ConfigPanel({
     }));
   };
 
-  const updateMailleLongueur = (longueur: number) => {
+  const updateMaille = (patch: Partial<MailleConfig>) => {
     if (!selected) return;
     setConfig(prev => ({
       ...prev,
-      mailles: prev.mailles.map(m => m.id === selected ? { ...m, longueur } : m),
+      mailles: prev.mailles.map(m => m.id === selected ? { ...m, ...patch } : m),
     }));
   };
 
-  const updateMailleLargeur = (largeur: number) => {
-    if (!selected) return;
-    setConfig(prev => ({
-      ...prev,
-      mailles: prev.mailles.map(m => m.id === selected ? { ...m, largeur } : m),
-    }));
-  };
+  const sm = selected ? config.mailles.find(m => m.id === selected) : null;
 
   return (
     <div className="w-full sm:w-[300px] sm:min-w-[300px] glass-panel sm:border-r border-white/6 flex flex-col overflow-hidden">
@@ -863,18 +725,129 @@ function ConfigPanel({
             </div>
           </div>
 
-          <LayoutEditor config={config} setConfig={setConfig} selected={selected} setSelected={setSelected} updateMailleLongueur={updateMailleLongueur} updateMailleLargeur={updateMailleLargeur} />
+          <LayoutEditor config={config} setConfig={setConfig} selected={selected} setSelected={setSelected} />
 
           <p className="text-[9px] text-[#555566] mt-1">
-            <Move size={9} className="inline mr-0.5" /> Clic pour options &bull; Glisser pour deplacer &bull; Double-clic pour tourner
+            <Move size={9} className="inline mr-0.5" /> Clic pour selectionner &bull; Glisser pour deplacer &bull; Double-clic pour tourner
           </p>
         </div>
 
+        {/* Options maille selectionnee */}
+        {sm && (
+          <div className="space-y-2 p-3 bg-[#16161e] rounded-lg border border-white/10">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] text-[#e8c840] uppercase tracking-wider font-semibold">Maille {closestLedger(sm.longueur)}×{closestLedger(sm.largeur)}</label>
+              <div className="flex gap-1.5">
+                <button onClick={() => updateMaille({ rotation: sm.rotation === 0 ? 90 : 0 as 0 | 90 })}
+                  className="p-1 rounded bg-white/5 border border-white/10 text-[#888899] hover:text-white/80 active:scale-90" title="Tourner">
+                  <RotateCw size={11} />
+                </button>
+                <button onClick={() => { if (config.mailles.length <= 1) return; setConfig(prev => ({ ...prev, mailles: prev.mailles.filter(m => m.id !== selected) })); setSelected(null); }}
+                  disabled={config.mailles.length <= 1}
+                  className="p-1 rounded bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-90 disabled:opacity-30" title="Supprimer">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-[9px] text-[#888899] block mb-1">Longueur</label>
+              <div className="flex flex-wrap gap-1">
+                {MOISE_LENGTHS.map((l) => (
+                  <button key={`l-${l}`} onClick={() => updateMaille({ longueur: l })}
+                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.longueur === l ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                    {l}m
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[9px] text-[#888899] block mb-1">Profondeur</label>
+              <div className="flex flex-wrap gap-1">
+                {MOISE_LENGTHS.map((l) => (
+                  <button key={`w-${l}`} onClick={() => updateMaille({ largeur: l })}
+                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                    {l}m
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+                <input type="checkbox" checked={sm.aVide} onChange={(e) => updateMaille({ aVide: e.target.checked })}
+                  className="w-3.5 h-3.5 rounded accent-[#e8c840]" />
+                Vide
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] text-[#22c55e] cursor-pointer">
+                <input type="checkbox" checked={sm.accesExterieur} onChange={(e) => updateMaille({ accesExterieur: e.target.checked })}
+                  className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
+                Acces ext.
+              </label>
+            </div>
+            {sm.accesExterieur && (
+              <div className="space-y-1.5 pt-1 border-t border-white/5">
+                <label className="text-[9px] text-[#22c55e] block">Cote acces (crinoline + portillon)</label>
+                <div className="flex gap-1">
+                  {([['zmin', 'Avant'], ['zmax', 'Arriere'], ['xmin', 'Gauche'], ['xmax', 'Droite']] as [AccesSide, string][]).map(([side, label]) => (
+                    <button key={side} onClick={() => updateMaille({ accesExterieurSide: side })}
+                      className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.accesExterieurSide === side ? 'bg-[#22c55e]/20 border border-[#22c55e]/50 text-[#22c55e]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
+                  <input type="checkbox" checked={sm.accesExterieurPremierPalier} onChange={(e) => updateMaille({ accesExterieurPremierPalier: e.target.checked })}
+                    className="w-3.5 h-3.5 rounded accent-[#22c55e]" />
+                  Premier palier uniquement
+                </label>
+              </div>
+            )}
+            {/* Deport per maille */}
+            <div className="pt-1 border-t border-white/5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] text-[#3b82f6]">Deport (console)</label>
+                <Toggle checked={sm.deport} onChange={(v) => updateMaille({ deport: v })} />
+              </div>
+              {sm.deport && (
+                <div className="mt-1.5 space-y-1.5">
+                  <label className="text-[9px] text-[#888899] block">Longueur deport</label>
+                  <div className="flex flex-wrap gap-1">
+                    {MOISE_LENGTHS.map((l) => (
+                      <button key={`d-${l}`} onClick={() => updateMaille({ deportLongueur: l })}
+                        className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.deportLongueur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                        {l}m
+                      </button>
+                    ))}
+                  </div>
+                  <label className="text-[9px] text-[#888899] block">Cotes</label>
+                  <div className="grid grid-cols-2 gap-1">
+                    {([['zmin', 'Avant'], ['zmax', 'Arriere'], ['xmin', 'Gauche'], ['xmax', 'Droite']] as [keyof DeportSides, string][]).map(([side, label]) => (
+                      <label key={side} className="flex items-center gap-1.5 text-[9px] text-[#888899] cursor-pointer">
+                        <input type="checkbox" checked={sm.deportSides[side]}
+                          onChange={(e) => updateMaille({ deportSides: { ...sm.deportSides, [side]: e.target.checked } })}
+                          className="w-3 h-3 rounded accent-[#3b82f6]" />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-[9px] text-[#888899] cursor-pointer">
+                    <input type="checkbox" checked={sm.deportTousEtages} onChange={(e) => updateMaille({ deportTousEtages: e.target.checked })}
+                      className="w-3 h-3 rounded accent-[#3b82f6]" />
+                    Tous les etages
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {!sm && (
+          <p className="text-[9px] text-[#555566] text-center py-2">Selectionnez une maille pour voir ses options</p>
+        )}
+
         <div className="w-full h-px bg-white/5" />
 
-        {/* Options */}
+        {/* Options globales */}
         <div className="space-y-3">
-          <label className="text-[10px] text-[#555566] uppercase tracking-wider font-semibold block">Options</label>
+          <label className="text-[10px] text-[#555566] uppercase tracking-wider font-semibold block">Options generales</label>
 
           {/* Type interieur/exterieur */}
           <div>
@@ -896,45 +869,6 @@ function ConfigPanel({
               <p className="text-[9px] text-[#e8c840]/70 mt-1">
                 Sapine (contreventement) ajoutee automatiquement — {sapineLevels(config)} niveau{sapineLevels(config) > 1 ? 'x' : ''} de diagonales
               </p>
-            )}
-          </div>
-
-          {/* Deport */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-[12px] text-[#888899]">Deport (console)</label>
-              <Toggle checked={config.deport} onChange={(v) => setConfig(p => ({ ...p, deport: v }))} />
-            </div>
-            {config.deport && (
-              <div className="mt-1.5 ml-2 space-y-1.5">
-                <label className="text-[10px] text-[#888899] block mb-1">Longueur deport</label>
-                <div className="flex flex-wrap gap-1">
-                  {MOISE_LENGTHS.map((l) => (
-                    <button key={`d-${l}`} onClick={() => setConfig(p => ({ ...p, deportLongueur: l }))}
-                      className={`px-1.5 py-0.5 text-[10px] rounded transition-all ${config.deportLongueur === l ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899] hover:border-white/20'}`}>
-                      {l}m
-                    </button>
-                  ))}
-                </div>
-                <label className="text-[10px] text-[#888899] block mt-1">Cotes</label>
-                <div className="grid grid-cols-2 gap-1">
-                  {([['zmin', 'Avant (largeur)'], ['zmax', 'Arriere (largeur)'], ['xmin', 'Gauche (longueur)'], ['xmax', 'Droite (longueur)']] as [keyof DeportSides, string][]).map(([side, label]) => (
-                    <label key={side} className="flex items-center gap-1.5 text-[10px] text-[#888899] cursor-pointer">
-                      <input type="checkbox" checked={config.deportSides[side]}
-                        onChange={(e) => setConfig(p => ({ ...p, deportSides: { ...p.deportSides, [side]: e.target.checked } }))}
-                        className="w-3 h-3 rounded accent-[#3b82f6]" />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-                <label className="flex items-center gap-2 text-[10px] text-[#888899] cursor-pointer mt-1">
-                  <input type="checkbox" checked={config.deportTousEtages}
-                    onChange={(e) => setConfig(p => ({ ...p, deportTousEtages: e.target.checked }))}
-                    className="w-3.5 h-3.5 rounded accent-[#3b82f6]" />
-                  Tous les etages
-                  <span className="text-[#555566]">(sinon dernier uniquement)</span>
-                </label>
-              </div>
             )}
           </div>
 
@@ -1122,14 +1056,10 @@ export function PlannerView() {
   const [config, setConfig] = useState<PlannerConfig>({
     hauteurPlancher: 6,
     mailles: [
-      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false },
-      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false },
+      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false },
+      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false },
     ],
     type: 'interieur',
-    deport: false,
-    deportLongueur: 0.73,
-    deportSides: { zmin: false, zmax: false, xmin: false, xmax: false },
-    deportTousEtages: false,
     verinage: false,
     echelle: true,
   });
