@@ -24,6 +24,8 @@ const CATEGORY_ORDER = [
 // ==========================================
 export type AccesSide = 'xmin' | 'xmax' | 'zmin' | 'zmax';
 
+export type PlancherSens = 'longueur' | 'largeur'; // sens de pose des plateaux
+
 export interface MailleConfig {
   id: string;
   longueur: number;
@@ -32,6 +34,7 @@ export interface MailleConfig {
   z: number;        // position Z en metres
   rotation: 0 | 90; // 0 = longueur sur X, 90 = longueur sur Z
   aVide: boolean;   // maille a vide = pas de plateforme/GC/plinthes
+  plancherSens: PlancherSens; // sens de pose des plateaux/trappes
   accesExterieur: boolean;       // acces depuis l'exterieur avec crinoline
   accesExterieurSide: AccesSide; // cote de l'acces
   accesExterieurPremierPalier: boolean; // acces uniquement au premier palier
@@ -39,6 +42,7 @@ export interface MailleConfig {
   deportLongueur: number;
   deportSides: DeportSides;
   deportTousEtages: boolean;
+  deportPlancherSens: PlancherSens; // sens de pose des plateaux du deport
 }
 
 export interface DeportSides {
@@ -230,26 +234,38 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     items.push({ name: `U ${len}m`, category: 'U (traverses)', count, unitWeight: Math.round(Number(len) * 3.5 * 10) / 10 });
   }
 
-  // --- PLATEFORMES ---
-  // Mailles pleines : trappe (avec echelle) ou plateau (sans) a tous les niveaux
-  // Mailles a vide : plateau uniquement au dernier niveau (top)
-  const maillesPleines = pc.mailles.filter(m => !m.aVide);
-  const maillesVides = pc.mailles.filter(m => m.aVide);
-  if (pc.echelle) {
-    // Avec echelle : trappes d'acces a chaque niveau sur les mailles pleines
-    const nbTrappes = maillesPleines.length * levels.length;
-    if (nbTrappes > 0) items.push({ name: 'Trappe', category: 'Plateformes', count: nbTrappes, unitWeight: 15.0 });
-  } else {
-    // Sans echelle : plateaux pleins
-    const nbPlateaux = maillesPleines.length * levels.length;
-    if (nbPlateaux > 0) items.push({ name: 'Plateau', category: 'Plateformes', count: nbPlateaux, unitWeight: 15.0 });
-  }
-  // Mailles a vide : 1 plateau au top
-  if (maillesVides.length > 0) {
-    items.push({ name: 'Plateau', category: 'Plateformes', count: maillesVides.length, unitWeight: 15.0 });
+  // --- PLATEFORMES (plateau 0.32m + trappe 0.64m) ---
+  const PLATEAU_W = 0.32;
+  const TRAPPE_W = 0.64;
+  for (const m of pc.mailles) {
+    const r = getMailleRect(m);
+    const dimX = closestLedger(r.x2 - r.x1);
+    const dimZ = closestLedger(r.z2 - r.z1);
+    // Sens de pose : "longueur" = plateaux le long de la longueur de la maille
+    const plankLen = m.plancherSens === 'longueur' ? dimX : dimZ; // longueur du plateau
+    const coverDim = m.plancherSens === 'longueur' ? dimZ : dimX; // dimension a couvrir
+    const nbNiveaux = m.aVide ? 1 : levels.length;
+
+    if (pc.echelle && !m.aVide) {
+      // 1 trappe (0.64m) + plateaux pour le reste
+      const resteCover = Math.max(0, coverDim - TRAPPE_W);
+      const nbPlateaux = Math.floor(resteCover / PLATEAU_W);
+      items.push({ name: `Trappe ${plankLen}m`, category: 'Plateformes', count: nbNiveaux, unitWeight: 15.0 });
+      if (nbPlateaux > 0) {
+        items.push({ name: `Plateau ${plankLen}×0.32m`, category: 'Plateformes', count: nbPlateaux * nbNiveaux, unitWeight: Math.round(plankLen * 1.5 * 10) / 10 });
+      }
+    } else {
+      // Tout en plateaux
+      const nbPlateaux = Math.floor(coverDim / PLATEAU_W);
+      if (nbPlateaux > 0) {
+        items.push({ name: `Plateau ${plankLen}×0.32m`, category: 'Plateformes', count: nbPlateaux * nbNiveaux, unitWeight: Math.round(plankLen * 1.5 * 10) / 10 });
+      }
+    }
   }
 
   // Diagonales : mailles pleines = 2 au 1er niveau, mailles a vide = 2 par niveau
+  const maillesPleines = pc.mailles.filter(m => !m.aVide);
+  const maillesVides = pc.mailles.filter(m => m.aVide);
   const diagPleines = maillesPleines.length * 2;
   const diagVides = maillesVides.length * levels.length * 4; // 4 cotes
   const totalDiag = diagPleines + diagVides;
@@ -364,11 +380,16 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
     const addDeportForSide = (mLen: number, isXaxis: boolean, p1x: number, p1z: number, p2x: number, p2z: number) => {
       const ml = closestLedger(mLen);
       items.push({ name: `Equerre ${dL}m`, category: 'Consoles', count: 2 * nbEtages, unitWeight: Math.round(dL * 5 * 10) / 10 });
-      // Poteaux 1m dedupliques par position
       deportPoteauSet.add(`${p1x.toFixed(3)},${p1z.toFixed(3)}`);
       deportPoteauSet.add(`${p2x.toFixed(3)},${p2z.toFixed(3)}`);
       items.push({ name: `${isXaxis ? 'Moise' : 'U'} bout ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
-      items.push({ name: `Plateau deport ${ml}x${dL}m`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * dL * 10 * 10) / 10 });
+      // Plateaux du deport selon le sens choisi
+      const depPlankLen = m.deportPlancherSens === 'longueur' ? ml : dL;
+      const depCoverDim = m.deportPlancherSens === 'longueur' ? dL : ml;
+      const nbDepPlateaux = Math.floor(depCoverDim / PLATEAU_W);
+      if (nbDepPlateaux > 0) {
+        items.push({ name: `Plateau ${depPlankLen}×0.32m (deport)`, category: 'Consoles', count: nbDepPlateaux * nbEtages, unitWeight: Math.round(depPlankLen * 1.5 * 10) / 10 });
+      }
       items.push({ name: `Moise GC ${ml}m (deport bout)`, category: 'Moises', count: nbEtages * 2, unitWeight: Math.round(ml * 3.5 * 10) / 10 });
       items.push({ name: `Moise GC ${dL}m (deport retour)`, category: 'Moises', count: 2 * nbEtages * 2, unitWeight: Math.round(dL * 3.5 * 10) / 10 });
       items.push({ name: `Plinthe ${ml}m (deport)`, category: 'Consoles', count: nbEtages, unitWeight: Math.round(ml * 1.5 * 10) / 10 });
@@ -653,7 +674,7 @@ function ConfigPanel({
     const id = String(nextId.current++);
     setConfig(prev => ({
       ...prev,
-      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false }],
+      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens}],
     }));
     setSelected(id);
   };
@@ -791,6 +812,19 @@ function ConfigPanel({
                 Acces ext.
               </label>
             </div>
+            {!sm.aVide && (
+              <div>
+                <label className="text-[9px] text-[#888899] block mb-1">Sens plancher</label>
+                <div className="flex gap-1">
+                  {([['longueur', 'En longueur'], ['largeur', 'En largeur']] as [PlancherSens, string][]).map(([s, label]) => (
+                    <button key={s} onClick={() => updateMaille({ plancherSens: s })}
+                      className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.plancherSens === s ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {sm.accesExterieur && (
               <div className="space-y-1.5 pt-1 border-t border-white/5">
                 <label className="text-[9px] text-[#22c55e] block">Cote acces (crinoline + portillon)</label>
@@ -842,6 +876,15 @@ function ConfigPanel({
                       className="w-3 h-3 rounded accent-[#3b82f6]" />
                     Tous les etages
                   </label>
+                  <label className="text-[9px] text-[#888899] block">Sens plancher deport</label>
+                  <div className="flex gap-1">
+                    {([['longueur', 'En longueur'], ['largeur', 'En largeur']] as [PlancherSens, string][]).map(([s, label]) => (
+                      <button key={s} onClick={() => updateMaille({ deportPlancherSens: s })}
+                        className={`flex-1 py-1 text-[9px] rounded transition-all ${sm.deportPlancherSens === s ? 'bg-[#3b82f6]/20 border border-[#3b82f6]/50 text-[#60a5fa]' : 'bg-white/5 border border-white/10 text-[#888899]'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1064,8 +1107,8 @@ export function PlannerView() {
   const [config, setConfig] = useState<PlannerConfig>({
     hauteurPlancher: 6,
     mailles: [
-      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false },
-      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false },
+      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
+      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
     ],
     type: 'interieur',
     verinage: false,

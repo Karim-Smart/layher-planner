@@ -56,81 +56,64 @@ function Tube({ start, end, radius, color, metalness = 0.6, roughness = 0.35 }: 
 const PLATFORM_GREY = '#707880';
 const PLATFORM_ORANGE = '#d08030';
 
-function Platform({ x, y, z, width, depth, isAccess, trapSide, isDeport }: {
+// plankAxis: 'x' = planches le long de X (espaces en Z), 'z' = planches le long de Z (espaces en X)
+// hasTrap: trappe orange (0.64m) incluse
+function Platform({ x, y, z, width, depth, plankAxis, hasTrap }: {
   x: number; y: number; z: number; width: number; depth: number;
-  isAccess?: boolean; trapSide?: 'front' | 'back'; isDeport?: boolean;
+  plankAxis: 'x' | 'z'; hasTrap?: boolean;
 }) {
   const t = 0.04;
-  // Deport : planches grises de ~0.30m avec espaces visibles
-  if (isDeport) {
-    const plankW = 0.28;
-    const gap = 0.02;
-    const planks: React.ReactElement[] = [];
-    // Determiner l'axe principal (le plus long) pour poser les planches perpendiculairement
-    if (width >= depth) {
-      // Planches paralleles a Z, espaces le long de X
-      let px = x + 0.01;
-      let idx = 0;
-      while (px + plankW <= x + width + 0.001) {
-        planks.push(
-          <mesh key={idx++} position={[px + plankW / 2, y - t / 2, z + depth / 2]}>
-            <boxGeometry args={[plankW, t, depth - 0.02]} />
-            <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
-          </mesh>
-        );
-        px += plankW + gap;
-      }
-    } else {
-      // Planches paralleles a X, espaces le long de Z
-      let pz = z + 0.01;
-      let idx = 0;
-      while (pz + plankW <= z + depth + 0.001) {
-        planks.push(
-          <mesh key={idx++} position={[x + width / 2, y - t / 2, pz + plankW / 2]}>
-            <boxGeometry args={[width - 0.02, t, plankW]} />
-            <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
-          </mesh>
-        );
-        pz += plankW + gap;
-      }
-    }
-    return <group>{planks}</group>;
-  }
-  // Maille a vide : tout gris
-  if (isAccess) {
-    return (
-      <mesh position={[x + width / 2, y - t / 2, z + depth / 2]}>
-        <boxGeometry args={[width - 0.02, t, depth - 0.02]} />
-        <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
-      </mesh>
-    );
-  }
-  // Largeur >= 1m : split trappe orange (0.70m) alternee + zone grise
-  if (depth >= 0.98 && trapSide) {
-    const orangeD = 0.70;
-    const greyD = depth - orangeD;
-    const orangeZ = trapSide === 'front' ? z : z + greyD;
-    const greyZ = trapSide === 'front' ? z + orangeD : z;
-    return (
-      <group>
-        <mesh position={[x + width / 2, y - t / 2, orangeZ + orangeD / 2]}>
-          <boxGeometry args={[width - 0.02, t, orangeD - 0.01]} />
+  const PLANK_W = 0.30; // largeur visuelle d'un plateau (0.32m - gap)
+  const TRAP_W = 0.60;  // largeur visuelle trappe (0.64m - gap)
+  const GAP = 0.02;
+  const planks: React.ReactElement[] = [];
+  let idx = 0;
+
+  if (plankAxis === 'x') {
+    // Planches le long de X, empilees en Z
+    let pz = z + GAP / 2;
+    // Trappe d'abord si demandée
+    if (hasTrap && pz + TRAP_W <= z + depth + 0.001) {
+      planks.push(
+        <mesh key={idx++} position={[x + width / 2, y - t / 2, pz + TRAP_W / 2]}>
+          <boxGeometry args={[width - 0.02, t, TRAP_W]} />
           <meshStandardMaterial color={PLATFORM_ORANGE} metalness={0.3} roughness={0.7} />
         </mesh>
-        <mesh position={[x + width / 2, y - t / 2, greyZ + greyD / 2]}>
-          <boxGeometry args={[width - 0.02, t, greyD - 0.01]} />
+      );
+      pz += TRAP_W + GAP;
+    }
+    while (pz + PLANK_W <= z + depth + 0.001) {
+      planks.push(
+        <mesh key={idx++} position={[x + width / 2, y - t / 2, pz + PLANK_W / 2]}>
+          <boxGeometry args={[width - 0.02, t, PLANK_W]} />
           <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
         </mesh>
-      </group>
-    );
+      );
+      pz += PLANK_W + GAP;
+    }
+  } else {
+    // Planches le long de Z, empilees en X
+    let px = x + GAP / 2;
+    if (hasTrap && px + TRAP_W <= x + width + 0.001) {
+      planks.push(
+        <mesh key={idx++} position={[px + TRAP_W / 2, y - t / 2, z + depth / 2]}>
+          <boxGeometry args={[TRAP_W, t, depth - 0.02]} />
+          <meshStandardMaterial color={PLATFORM_ORANGE} metalness={0.3} roughness={0.7} />
+        </mesh>
+      );
+      px += TRAP_W + GAP;
+    }
+    while (px + PLANK_W <= x + width + 0.001) {
+      planks.push(
+        <mesh key={idx++} position={[px + PLANK_W / 2, y - t / 2, z + depth / 2]}>
+          <boxGeometry args={[PLANK_W, t, depth - 0.02]} />
+          <meshStandardMaterial color={PLATFORM_GREY} metalness={0.3} roughness={0.7} />
+        </mesh>
+      );
+      px += PLANK_W + GAP;
+    }
   }
-  // Largeur < 1m : tout orange
-  return (
-    <mesh position={[x + width / 2, y - t / 2, z + depth / 2]}>
-      <boxGeometry args={[width - 0.02, t, depth - 0.02]} />
-      <meshStandardMaterial color={PLATFORM_ORANGE} metalness={0.3} roughness={0.7} />
-    </mesh>
-  );
+  return <group>{planks}</group>;
 }
 
 function ToeboardH({ x1, x2, y, z }: { x1: number; x2: number; y: number; z: number }) {
@@ -311,7 +294,11 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         const showFull = !m.aVide || isTopLevel(lh);
         if (!showFull) continue;
 
-        els.push(<Platform key={key()} x={r.x1} y={py} z={r.z1} width={r.x2 - r.x1} depth={r.z2 - r.z1} isAccess={m.aVide} trapSide={m.aVide ? undefined : (li % 2 === 0 ? 'front' : 'back')} />);
+        // plankAxis selon rotation et plancherSens
+        const pAxis: 'x' | 'z' = (m.plancherSens === 'longueur')
+          ? (m.rotation === 0 ? 'x' : 'z')
+          : (m.rotation === 0 ? 'z' : 'x');
+        els.push(<Platform key={key()} x={r.x1} y={py} z={r.z1} width={r.x2 - r.x1} depth={r.z2 - r.z1} plankAxis={pAxis} hasTrap={echelle && !m.aVide} />);
 
         const accesMaxLevel = m.accesExterieur && m.accesExterieurPremierPalier ? (levels[0] || 2) : Infinity;
         const isAccesLevel = accesSide && lh <= accesMaxLevel;
@@ -568,7 +555,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy + 1, zBase]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase + lenZ]} end={[xEnd, cy + 1, zBase + lenZ]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} isDeport />);
+            els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} plankAxis={dm.deportPlancherSens === 'longueur' ? 'x' : 'z'} />);
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase]} end={[xMin + offset, cy + gcH, zBase]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase + lenZ]} end={[xMin + offset, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
@@ -585,7 +572,7 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zEnd]} end={[xBase + lenX, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} isDeport />);
+            els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} plankAxis={dm.deportPlancherSens === 'longueur' ? 'z' : 'x'} />);
             for (const gcH of [0.5, 1.0]) {
               els.push(<Tube key={key()} start={[xBase, cy + gcH, zMin]} end={[xBase, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
               els.push(<Tube key={key()} start={[xBase + lenX, cy + gcH, zMin]} end={[xBase + lenX, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
