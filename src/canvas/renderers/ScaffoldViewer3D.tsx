@@ -562,9 +562,9 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 
           if (isX) {
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xEnd, cy, zBase]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xEnd, cy - 0.5, zBase]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xBase, cy - 0.5, zBase]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zBase + lenZ]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase, cy, zBase + lenZ]} end={[xEnd, cy - 0.5, zBase + lenZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xEnd, cy, zBase + lenZ]} end={[xBase, cy - 0.5, zBase + lenZ]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy + 1, zBase]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase + lenZ]} end={[xEnd, cy + 1, zBase + lenZ]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
@@ -579,9 +579,9 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<ToeboardV key={key()} x={xEnd} y={cy} z1={zBase} z2={zBase + lenZ} />);
           } else {
             els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xBase, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase, cy, zBase]} end={[xBase, cy - 0.5, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase, cy - 0.5, zBase]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zBase]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
-            els.push(<Tube key={key()} start={[xBase + lenX, cy, zBase]} end={[xBase + lenX, cy - 0.5, zEnd]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
+            els.push(<Tube key={key()} start={[xBase + lenX, cy, zEnd]} end={[xBase + lenX, cy - 0.5, zBase]} radius={DIAG_RADIUS} color={DIAGONAL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase + lenX, cy, zEnd]} end={[xBase + lenX, cy + 1, zEnd]} radius={TUBE_RADIUS} color={STEEL_COLOR} />);
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
