@@ -279,7 +279,7 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   const eps = 0.02;
 
   const gcByLen: Record<string, number> = {};
-  let toeCount = 0;
+  const toeByLen: Record<string, number> = {};
   let portillonCount = 0;
   let crinolineCount = 0;
   let crinolineArceaux = 0;
@@ -311,12 +311,12 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
           if (gcNiveaux > 0) {
             const k = `${segLen}`;
             gcByLen[k] = (gcByLen[k] || 0) + gcNiveaux * 2;
-            toeCount += gcNiveaux;
+            toeByLen[k] = (toeByLen[k] || 0) + gcNiveaux;
           }
         } else {
           const k = `${segLen}`;
           gcByLen[k] = (gcByLen[k] || 0) + nbNiveaux * 2;
-          toeCount += nbNiveaux;
+          toeByLen[k] = (toeByLen[k] || 0) + nbNiveaux;
         }
       }
     }
@@ -333,7 +333,9 @@ function computeFullBOM(pc: PlannerConfig): BOMItem[] {
   for (const [len, count] of Object.entries(gcByLen)) {
     items.push({ name: `Moise GC ${len}m`, category: 'Moises', count, unitWeight: Math.round(Number(len) * 3.5 * 10) / 10 });
   }
-  if (toeCount > 0) items.push({ name: 'Plinthe', category: 'Plinthes', count: toeCount, unitWeight: 1.5 });
+  for (const [len, count] of Object.entries(toeByLen)) {
+    items.push({ name: `Plinthe ${len}m`, category: 'Plinthes', count, unitWeight: Math.round(Number(len) * 1.5 * 10) / 10 });
+  }
   // Acces exterieur BOM
   if (portillonCount > 0) items.push({ name: 'Portillon acces', category: 'Acces exterieur', count: portillonCount, unitWeight: 8.5 });
   if (crinolineCount > 0) {
