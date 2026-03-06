@@ -509,8 +509,8 @@ function LayoutEditor({
     const svgPt = clientToSvg(clientX, clientY);
     const wx = toWorldX(svgPt.x);
     const wz = toWorldZ(svgPt.y);
-    const dx = wx - dragging.startMx;
-    const dz = wz - dragging.startMz;
+    const dx = (wx - dragging.startMx) * 0.5;
+    const dz = (wz - dragging.startMz) * 0.5;
     const maille = config.mailles.find(m => m.id === dragging.id)!;
     const snapped = snapToEdges(dragging.origX + dx, dragging.origZ + dz, dragging.id, maille);
     setConfig(prev => ({
