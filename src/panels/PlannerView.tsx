@@ -10,7 +10,7 @@ import { ScaffoldViewer3D } from '../canvas/renderers/ScaffoldViewer3D';
 // ==========================================
 // CONSTANTES METIER
 // ==========================================
-const HAUTEURS_PLANCHER = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12];
+const HAUTEURS_PLANCHER = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22];
 const MOISE_LENGTHS = [0.73, 1.09, 1.40, 1.57, 2.07, 2.57, 3.07];
 
 const CATEGORY_ORDER = [
