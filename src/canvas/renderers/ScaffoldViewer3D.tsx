@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, ContactShadows } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { closestLedger } from '../../engine/scaffoldGenerator';
 import type { PlannerConfig, MailleRect, EdgeSegments } from '../../panels/PlannerView';
@@ -47,7 +47,7 @@ function Tube({ start, end, radius, color, metalness = 0.6, roughness = 0.35 }: 
   if (length < 0.001) return null;
   return (
     <mesh ref={ref} position={position} quaternion={quaternion}>
-      <cylinderGeometry args={[radius, radius, length, 8]} />
+      <cylinderGeometry args={[radius, radius, length, 16]} />
       <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} />
     </mesh>
   );
@@ -154,7 +154,7 @@ function ToeboardV({ x, y, z1, z2 }: { x: number; y: number; z1: number; z2: num
 function Rosette({ x, y, z }: { x: number; y: number; z: number }) {
   return (
     <mesh position={[x, y, z]}>
-      <sphereGeometry args={[0.015, 8, 8]} />
+      <sphereGeometry args={[0.015, 12, 12]} />
       <meshStandardMaterial color={ROSETTE_COLOR} metalness={0.7} roughness={0.3} />
     </mesh>
   );
@@ -180,7 +180,7 @@ function BaseJack({ x, z, heightM, inverted }: {
 }
 
 function Clamp({ x, y, z }: { x: number; y: number; z: number }) {
-  return (<mesh position={[x, y, z]}><torusGeometry args={[0.03, 0.008, 8, 12]} /><meshStandardMaterial color={CLAMP_COLOR} metalness={0.7} roughness={0.3} /></mesh>);
+  return (<mesh position={[x, y, z]}><torusGeometry args={[0.03, 0.008, 12, 24]} /><meshStandardMaterial color={CLAMP_COLOR} metalness={0.7} roughness={0.3} /></mesh>);
 }
 
 // ==========================================
@@ -619,10 +619,25 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
 // ==========================================
 function Ground() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-      <planeGeometry args={[40, 40]} />
-      <meshStandardMaterial color="#2a2a30" metalness={0} roughness={0.9} />
-    </mesh>
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+        <planeGeometry args={[50, 50]} />
+        <meshStandardMaterial color="#1e1e24" metalness={0} roughness={0.95} />
+      </mesh>
+      <Grid
+        position={[0, -0.01, 0]}
+        args={[50, 50]}
+        cellSize={0.5}
+        cellThickness={0.5}
+        cellColor="#303040"
+        sectionSize={2}
+        sectionThickness={1}
+        sectionColor="#404055"
+        fadeDistance={25}
+        fadeStrength={1}
+        infiniteGrid
+      />
+    </group>
   );
 }
 
@@ -644,15 +659,28 @@ export function ScaffoldViewer3D({ plannerConfig }: { plannerConfig: PlannerConf
   const cameraY = totalH * 0.6;
 
   return (
-    <Canvas shadows gl={{ antialias: true, alpha: false }} style={{ background: '#0e0e14' }}>
-      <PerspectiveCamera makeDefault position={[cameraD * 0.8, cameraY + 1, cameraD * 0.6]} fov={45} />
-      <OrbitControls target={[0, totalH * 0.4, 0]} enableDamping dampingFactor={0.1} minDistance={1} maxDistance={40} maxPolarAngle={Math.PI / 2 + 0.1} />
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[8, 12, 6]} intensity={1.2} castShadow shadow-mapSize={1024} />
-      <directionalLight position={[-4, 8, -3]} intensity={0.3} />
-      <hemisphereLight args={['#b0c4de', '#2a2a30', 0.5]} />
+    <Canvas
+      shadows
+      gl={{ antialias: true, alpha: false, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
+      dpr={[1, 2]}
+      style={{ background: '#0e0e14' }}
+    >
+      <PerspectiveCamera makeDefault position={[cameraD * 0.8, cameraY + 1, cameraD * 0.6]} fov={42} />
+      <OrbitControls target={[0, totalH * 0.4, 0]} enableDamping dampingFactor={0.08} minDistance={1} maxDistance={50} maxPolarAngle={Math.PI / 2 + 0.05} />
+      <ambientLight intensity={0.3} />
+      <directionalLight
+        position={[10, 15, 8]} intensity={1.5} castShadow
+        shadow-mapSize={2048} shadow-bias={-0.0002}
+        shadow-camera-left={-15} shadow-camera-right={15}
+        shadow-camera-top={15} shadow-camera-bottom={-15}
+      />
+      <directionalLight position={[-6, 10, -4]} intensity={0.4} color="#b0c4de" />
+      <pointLight position={[0, totalH + 2, 0]} intensity={0.3} distance={totalH * 3} />
+      <hemisphereLight args={['#c0d0e8', '#1a1a24', 0.6]} />
+      <Environment preset="city" backgroundIntensity={0} environmentIntensity={0.15} />
+      <fog attach="fog" args={['#0e0e14', 30, 60]} />
       <Ground />
-      <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={30} blur={2} far={10} />
+      <ContactShadows position={[0, 0.001, 0]} opacity={0.5} scale={40} blur={2.5} far={12} resolution={512} />
       <ScaffoldScene pc={plannerConfig} />
     </Canvas>
   );
