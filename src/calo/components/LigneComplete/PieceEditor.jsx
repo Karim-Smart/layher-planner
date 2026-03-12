@@ -293,7 +293,7 @@ export default function PieceEditor({
       )}
 
       {/* ====== TEMPLATES SECTION ====== */}
-      <div className="glass-card rounded-xl overflow-hidden">
+      <div className="glass-card rounded-xl overflow-hidden" data-tuto="templates">
         <button
           onClick={() => setShowTemplates(!showTemplates)}
           className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-black/[0.02] transition-colors duration-200"
@@ -353,7 +353,7 @@ export default function PieceEditor({
       </div>
 
       {/* ====== ADD PIECE BUTTONS ====== */}
-      <div className="glass-card rounded-xl p-3">
+      <div className="glass-card rounded-xl p-3" data-tuto="add-piece">
         <span className="text-[9px] font-bold uppercase tracking-wider text-[#86868b] block mb-2">Ajouter une piece</span>
         <div className="flex gap-1.5">
           {TYPES_PIECE.map(({ type, label }) => (
@@ -787,14 +787,46 @@ export default function PieceEditor({
 
       {/* ====== EMPTY STATE ====== */}
       {pieces.length === 0 && (
-        <div className="text-center py-10">
-          <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-black/[0.03] flex items-center justify-center">
-            <svg className="w-6 h-6 text-[#c7c7cc]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        <div className="text-center py-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#F2A900]/10 to-[#f57c00]/10 flex items-center justify-center border border-[#F2A900]/20">
+            <svg className="w-8 h-8 text-[#F2A900]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16 L4 10 A6 6 0 0 1 10 4 L20 4" />
+              <circle cx="4" cy="18" r="2" />
+              <circle cx="20" cy="4" r="2" />
             </svg>
           </div>
-          <p className="text-[12px] font-medium text-[#86868b]">Aucune piece ajoutee</p>
-          <p className="text-[10px] text-[#c7c7cc] mt-0.5">Utilisez les boutons ci-dessus ou un template</p>
+          <p className="text-sm font-semibold text-[#1d1d1f] mb-1">Votre ligne est vide</p>
+          <p className="text-xs text-[#86868b] mb-5 max-w-[260px] mx-auto">
+            Ajoutez des tuyaux, coudes et raccords pour construire votre ligne de calorifuge
+          </p>
+
+          {/* Quick start buttons */}
+          <div className="flex flex-col gap-2 max-w-[280px] mx-auto">
+            <button
+              onClick={() => ajouterPiece('droit')}
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-xl bg-[#F2A900]/[0.07] border border-[#F2A900]/20 hover:bg-[#F2A900]/[0.12] active:scale-[0.97] transition-all text-left"
+            >
+              <div className="w-8 h-8 rounded-lg bg-[#3B82F6]/10 flex items-center justify-center">
+                <PieceIcon type="droit" size={16} strokeWidth={2.5} />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-[#1d1d1f] block">Ajouter un tuyau droit</span>
+                <span className="text-[10px] text-[#86868b]">La piece de base</span>
+              </div>
+            </button>
+            <button
+              onClick={() => ajouterTemplate('coude_simple')}
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/[0.06] hover:bg-black/[0.04] active:scale-[0.97] transition-all text-left"
+            >
+              <div className="w-8 h-8 rounded-lg bg-[#F97316]/10 flex items-center justify-center">
+                <PieceIcon type="coude90" size={16} strokeWidth={2.5} />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-[#1d1d1f] block">Demarrer avec un modele</span>
+                <span className="text-[10px] text-[#86868b]">Coude simple pre-configure</span>
+              </div>
+            </button>
+          </div>
         </div>
       )}
 

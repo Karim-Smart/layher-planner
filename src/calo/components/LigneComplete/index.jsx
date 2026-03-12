@@ -6,6 +6,7 @@ import VueSchema from './VueSchema';
 import Vue3D from './Vue3D';
 import PatronsDecoupe from './PatronsDecoupe';
 import RecapLigne from './RecapLigne';
+import Tutorial from './Tutorial';
 
 const EPAISSEURS_ISOLANT = [30, 40, 50, 60, 80, 100];
 const EPAISSEUR_TOLE = [0.5, 0.6, 0.8, 1.0];
@@ -43,6 +44,9 @@ export default function LigneComplete() {
 
   const [activeSection, setActiveSection] = useState('editeur');
   const [showParams, setShowParams] = useState(true);
+  const [showTutorial, setShowTutorial] = useState(() => {
+    return !localStorage.getItem('calo_tuto_done');
+  });
 
   useEffect(() => {
     localStorage.setItem('calo_ligne_params', JSON.stringify(params));
@@ -185,6 +189,9 @@ export default function LigneComplete() {
 
   return (
     <div className="px-4 py-3 space-y-3">
+      {/* Tutorial overlay */}
+      {showTutorial && <Tutorial onClose={() => setShowTutorial(false)} />}
+
       {/* En-tete avec stats rapides */}
       <div className="flex items-center justify-between">
         <div>
@@ -193,17 +200,28 @@ export default function LigneComplete() {
             Construire une ligne de tuyauterie et generer les patrons de decoupe
           </p>
         </div>
-        {pieces.length > 0 && (
-          <div className="flex items-center gap-2">
-            <StatBadge label="Pieces" value={stats.count} color="#f57c00" />
-            <StatBadge label="Longueur" value={`${stats.longueur}m`} color="#3b82f6" />
-            {stats.coudes > 0 && <StatBadge label="Coudes" value={stats.coudes} color="#f59e0b" />}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {pieces.length > 0 && (
+            <>
+              <StatBadge label="Pieces" value={stats.count} color="#f57c00" />
+              <StatBadge label="Longueur" value={`${stats.longueur}m`} color="#3b82f6" />
+              {stats.coudes > 0 && <StatBadge label="Coudes" value={stats.coudes} color="#f59e0b" />}
+            </>
+          )}
+          <button
+            onClick={() => { localStorage.removeItem('calo_tuto_done'); setShowTutorial(true); }}
+            className="w-8 h-8 rounded-full flex items-center justify-center bg-[#F2A900]/10 text-[#F2A900] hover:bg-[#F2A900]/20 active:scale-90 transition-all"
+            title="Aide / Tutoriel"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Parametres globaux - collapsible */}
-      <div className="glass-card rounded-xl overflow-hidden">
+      <div className="glass-card rounded-xl overflow-hidden" data-tuto="params">
         <button
           onClick={() => setShowParams(!showParams)}
           className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-black/[0.02] transition-colors"
@@ -339,7 +357,7 @@ export default function LigneComplete() {
       </div>
 
       {/* Navigation sections */}
-      <div className="flex gap-0.5 bg-black/[0.03] rounded-lg p-0.5">
+      <div className="flex gap-0.5 bg-black/[0.03] rounded-lg p-0.5" data-tuto="nav">
         {SECTIONS.map(s => {
           const isActive = activeSection === s.id;
           return (
