@@ -32,9 +32,9 @@ export function StatusBar() {
   };
 
   return (
-    <div className="glass-panel flex items-center gap-2 px-3 py-1 border-t border-white/6 text-[10px] select-none">
+    <div className="glass-panel flex items-center gap-2 px-3 py-1 border-t border-black/[0.06] text-[10px] select-none">
       {/* View label */}
-      <span className="text-[#e8c840] font-semibold text-[10px] tracking-wide">
+      <span className="text-[#c88800] font-semibold text-[10px] tracking-wide">
         {VIEW_LABELS[viewMode]}
       </span>
 
@@ -48,12 +48,12 @@ export function StatusBar() {
           onChange={(e) => setZoomInput(e.target.value)}
           onBlur={handleZoomSubmit}
           onKeyDown={(e) => e.key === 'Enter' && handleZoomSubmit()}
-          className="w-12 bg-white/10 border border-white/20 rounded px-1 text-center text-[10px] text-white outline-none"
+          className="w-12 bg-black/[0.04] border border-black/[0.1] rounded px-1 text-center text-[10px] text-[#1d1d1f] outline-none"
         />
       ) : (
         <button
           onClick={() => { setEditingZoom(true); setZoomInput(String(Math.round(zoom * 100))); }}
-          className="text-[#888899] hover:text-white transition-colors font-mono"
+          className="text-[#86868b] hover:text-[#1d1d1f] transition-colors font-mono"
           title="Cliquer pour modifier le zoom"
         >
           {Math.round(zoom * 100)}%
@@ -63,20 +63,20 @@ export function StatusBar() {
       <Sep />
 
       {/* Piece count */}
-      <span className="text-[#888899]">
+      <span className="text-[#86868b]">
         {bom.totalPieces} pièce{bom.totalPieces !== 1 ? 's' : ''}
       </span>
 
       <Sep />
 
       {/* Weight */}
-      <span className="text-[#e8c840]/70 font-medium">{bom.totalWeight} kg</span>
+      <span className="text-[#c88800] font-medium">{bom.totalWeight} kg</span>
 
       {/* Selection */}
       {selectedCount > 0 && (
         <>
           <Sep />
-          <span className="text-[#60a5fa] font-medium flex items-center gap-1">
+          <span className="text-[#007aff] font-medium flex items-center gap-1">
             <Crosshair size={10} />
             {selectedCount} sel. · {Math.round(selectedWeight * 10) / 10} kg
           </span>
@@ -86,7 +86,7 @@ export function StatusBar() {
       <div className="flex-1" />
 
       {/* Mouse coords */}
-      <span className="font-mono text-[9px] text-[#444455] w-24 text-right tabular-nums">
+      <span className="font-mono text-[9px] text-[#aeaeb2] w-24 text-right tabular-nums">
         {mouseX.toFixed(2)}, {mouseY.toFixed(2)} m
       </span>
 
@@ -97,8 +97,8 @@ export function StatusBar() {
         onClick={() => setSnapToGrid(!snapToGrid)}
         className={`flex items-center gap-1 transition-all duration-200 ${
           snapToGrid
-            ? 'text-[#60a5fa]'
-            : 'text-[#444455] hover:text-[#666677]'
+            ? 'text-[#007aff]'
+            : 'text-[#aeaeb2] hover:text-[#86868b]'
         }`}
       >
         <Magnet size={10} />
@@ -111,13 +111,13 @@ export function StatusBar() {
       <div className="flex items-center gap-1">
         {isDirty ? (
           <>
-            <CloudOff size={10} className="text-[#e8c840]/60" />
-            <span className="text-[#e8c840]/60">Non sauvé</span>
+            <CloudOff size={10} className="text-[#F2A900]" />
+            <span className="text-[#c88800]">Non sauvé</span>
           </>
         ) : savedLabel ? (
           <>
-            <Cloud size={10} className="text-[#444455]" />
-            <span className="text-[#444455]">{savedLabel}</span>
+            <Cloud size={10} className="text-[#aeaeb2]" />
+            <span className="text-[#aeaeb2]">{savedLabel}</span>
           </>
         ) : null}
       </div>
@@ -126,7 +126,7 @@ export function StatusBar() {
 }
 
 function Sep() {
-  return <span className="w-px h-3 bg-white/6 mx-0.5" />;
+  return <span className="w-px h-3 bg-black/[0.06] mx-0.5" />;
 }
 
 function formatTimeAgo(timestamp: number): string {

@@ -20,21 +20,21 @@ export function PropertiesPanel() {
   // Empty state
   if (selectedPieces.length === 0) {
     return (
-      <div className="w-[280px] glass-panel flex flex-col border-l border-white/6">
-        <div className="px-4 py-3 border-b border-white/6">
-          <h2 className="text-[11px] font-semibold tracking-widest uppercase text-[#888899]">
+      <div className="w-[280px] glass-panel flex flex-col border-l border-black/[0.06]">
+        <div className="px-4 py-3 border-b border-black/[0.06]">
+          <h2 className="text-[11px] font-semibold tracking-widest uppercase text-[#86868b]">
             Propriétés
           </h2>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center px-8">
-            <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-white/[0.03] border border-white/6 flex items-center justify-center">
-              <MousePointer size={18} className="text-[#444455]" />
+            <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-black/[0.03] border border-black/[0.06] flex items-center justify-center">
+              <MousePointer size={18} className="text-[#aeaeb2]" />
             </div>
-            <p className="text-[11px] text-[#555566] leading-relaxed">
+            <p className="text-[11px] text-[#86868b] leading-relaxed">
               Sélectionne une pièce pour voir ses propriétés
             </p>
-            <p className="text-[9px] text-[#333344] mt-2">
+            <p className="text-[9px] text-[#c1c1c6] mt-2">
               Glisse depuis le catalogue ou Shift+clic pour multi-sélection
             </p>
           </div>
@@ -61,19 +61,19 @@ export function PropertiesPanel() {
     const distributeV = () => { if (selectedPieces.length<3)return; pushHistory(); const s=[...selectedPieces].sort((a,b)=>a.y-b.y); const mn=s[0].y; const mx=s[s.length-1].y; const step=(mx-mn)/(s.length-1); s.forEach((p,i)=>updatePiecePosition(p.id,p.x,mn+i*step)); addToast('Distribué V','info'); };
 
     return (
-      <div className="w-[280px] glass-panel flex flex-col border-l border-white/6">
-        <div className="px-4 py-3 border-b border-white/6">
-          <h2 className="text-[11px] font-semibold tracking-widest uppercase text-[#888899]">
+      <div className="w-[280px] glass-panel flex flex-col border-l border-black/[0.06]">
+        <div className="px-4 py-3 border-b border-black/[0.06]">
+          <h2 className="text-[11px] font-semibold tracking-widest uppercase text-[#86868b]">
             Propriétés
           </h2>
         </div>
         <div className="p-3 flex flex-col gap-3 overflow-y-auto">
           {/* Summary */}
           <div className="glass-card p-3">
-            <div className="text-[12px] font-semibold">{selectedPieces.length} pièces</div>
-            <div className="flex gap-4 mt-1.5 text-[10px] text-[#888899]">
-              <div>Poids <span className="text-[#e8c840] font-medium ml-1">{Math.round(totalWeight * 10) / 10} kg</span></div>
-              <div>Centre <span className="text-white/60 font-mono ml-1">{avgX.toFixed(1)}, {avgY.toFixed(1)}</span></div>
+            <div className="text-[12px] font-semibold text-[#1d1d1f]">{selectedPieces.length} pièces</div>
+            <div className="flex gap-4 mt-1.5 text-[10px] text-[#86868b]">
+              <div>Poids <span className="text-[#c88800] font-medium ml-1">{Math.round(totalWeight * 10) / 10} kg</span></div>
+              <div>Centre <span className="text-[#1d1d1f]/60 font-mono ml-1">{avgX.toFixed(1)}, {avgY.toFixed(1)}</span></div>
             </div>
           </div>
 
@@ -135,18 +135,18 @@ export function PropertiesPanel() {
   const connTotal = piece.connectionPoints.length;
 
   return (
-    <div className="w-[280px] glass-panel flex flex-col border-l border-white/6">
-      <div className="px-4 py-3 border-b border-white/6">
-        <h2 className="text-[11px] font-semibold tracking-widest uppercase text-[#888899]">
+    <div className="w-[280px] glass-panel flex flex-col border-l border-black/[0.06]">
+      <div className="px-4 py-3 border-b border-black/[0.06]">
+        <h2 className="text-[11px] font-semibold tracking-widest uppercase text-[#86868b]">
           Propriétés
         </h2>
       </div>
       <div className="p-3 flex flex-col gap-3 overflow-y-auto">
         {/* Name */}
         <div>
-          <h3 className="text-[14px] font-semibold text-white/90">{def.name}</h3>
+          <h3 className="text-[14px] font-semibold text-[#1d1d1f]">{def.name}</h3>
           <span className="badge badge-gold text-[9px] mt-1">{catLabel}</span>
-          <p className="text-[10px] text-[#555566] mt-1.5 leading-relaxed">{def.description}</p>
+          <p className="text-[10px] text-[#86868b] mt-1.5 leading-relaxed">{def.description}</p>
         </div>
 
         {/* Dimensions */}
@@ -165,7 +165,7 @@ export function PropertiesPanel() {
           <h4 className="section-label mb-2">Position</h4>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-[#555566] block mb-1">X (m)</label>
+              <label className="text-[9px] text-[#aeaeb2] block mb-1">X (m)</label>
               <input
                 type="number"
                 value={Math.round(piece.x * 100) / 100}
@@ -176,7 +176,7 @@ export function PropertiesPanel() {
               />
             </div>
             <div>
-              <label className="text-[9px] text-[#555566] block mb-1">Y (m)</label>
+              <label className="text-[9px] text-[#aeaeb2] block mb-1">Y (m)</label>
               <input
                 type="number"
                 value={Math.round(piece.y * 100) / 100}
@@ -193,7 +193,7 @@ export function PropertiesPanel() {
         <div className="glass-card p-3">
           <h4 className="section-label mb-2">
             Connexions
-            <span className="ml-1.5 text-[#888899] font-normal">{connUsed}/{connTotal}</span>
+            <span className="ml-1.5 text-[#86868b] font-normal">{connUsed}/{connTotal}</span>
           </h4>
           <div className="flex flex-wrap gap-1">
             {def.connectionPoints.map((cp, i) => (
@@ -230,7 +230,7 @@ export function PropertiesPanel() {
         </div>
 
         {/* Shortcuts */}
-        <div className="text-[9px] text-[#444455] space-y-1 border-t border-white/4 pt-3">
+        <div className="text-[9px] text-[#aeaeb2] space-y-1 border-t border-black/[0.04] pt-3">
           <ShortcutRow label="Rotation" keys="R" />
           <ShortcutRow label="Supprimer" keys="Del" />
           <ShortcutRow label="Dupliquer" keys="Ctrl+D" />
@@ -245,8 +245,8 @@ export function PropertiesPanel() {
 function PropRow({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-[#555566]">{label}</span>
-      <span className={accent ? 'text-[#e8c840] font-medium' : 'text-white/70'}>{value}</span>
+      <span className="text-[#86868b]">{label}</span>
+      <span className={accent ? 'text-[#c88800] font-medium' : 'text-[#1d1d1f]/80'}>{value}</span>
     </div>
   );
 }
@@ -265,7 +265,7 @@ function AlignBtn({ icon, title, onClick }: { icon: React.ReactNode; title: stri
     <button
       onClick={onClick}
       title={title}
-      className="glass-button p-1.5 text-[#888899] hover:text-white/80"
+      className="glass-button p-1.5 text-[#86868b] hover:text-[#1d1d1f]"
     >
       {icon}
     </button>

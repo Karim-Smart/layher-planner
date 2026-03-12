@@ -1,39 +1,53 @@
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, ContactShadows, Environment, Grid } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Environment, Grid } from '@react-three/drei';
+import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
+import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
 import { closestLedger } from '../../engine/scaffoldGenerator';
-import type { PlannerConfig, MailleRect, EdgeSegments } from '../../panels/PlannerView';
+import type { PlannerConfig } from '../../panels/PlannerView';
 import { getMailleRect, getOpenSegments, needsSapine } from '../../panels/PlannerView';
 
+
 // ==========================================
-// MATERIAUX
+// MATERIAUX — couleurs Layher Allround réalistes
+// Acier galvanisé à chaud = argent brillant bleuté
+// Garde-corps = jaune RAL 1003 laqué
+// Plateaux = aluminium brossé / bois multiplex
 // ==========================================
-const STEEL_COLOR = '#a0aab4';
-const STEEL_DARK = '#8090a0';
-const GOLD_COLOR = '#dab020';
-const PLATFORM_COLOR = '#a08040';
-const DIAGONAL_COLOR = '#90a0b0';
-const JACK_COLOR = '#707a84';
-const TOEBOARD_COLOR = '#b89848';
-const ROSETTE_COLOR = '#d0a028';
-const LADDER_COLOR = '#c0c8d0';
-const CLAMP_COLOR = '#606870';
-const CONSOLE_COLOR = '#95a0aa';
+const STEEL_COLOR = '#b8c4d0';      // galva zinc clair
+const STEEL_DARK = '#8a9aac';       // galva patiné (vérins, tubes secondaires)
+const GOLD_COLOR = '#e8b800';       // jaune RAL 1003 — garde-corps laqué
+const DIAGONAL_COLOR = '#a0b0c0';   // galva clair — diagonales
+const JACK_COLOR = '#6a7580';       // acier brut vérins
+const TOEBOARD_COLOR = '#c8a030';   // plinthe bois/aluminium laqué jaune
+const ROSETTE_COLOR = '#d8b020';    // rosette — zinc doré
+const LADDER_COLOR = '#c8d0d8';     // échelle aluminium
+const CLAMP_COLOR = '#505a64';      // collier acier brut
+const CONSOLE_COLOR = '#a8b4c0';    // console galva
+const CALE_COLOR = '#F5B800';       // cale bois jaune
 
 const TUBE_RADIUS = 0.024;
 const GC_RADIUS = 0.020;
 const DIAG_RADIUS = 0.018;
 const POTEAU_MAX = 2.0;
 
+// Geometries réutilisables pour edgesGeometry (évite recréation par render)
+const _edgeGeoCache = new Map<string, THREE.BoxGeometry>();
+function getCachedBoxGeo(w: number, h: number, d: number): THREE.BoxGeometry {
+  const k = `${w.toFixed(4)}_${h.toFixed(4)}_${d.toFixed(4)}`;
+  let g = _edgeGeoCache.get(k);
+  if (!g) { g = new THREE.BoxGeometry(w, h, d); _edgeGeoCache.set(k, g); }
+  return g;
+}
+
 // ==========================================
-// TUBE
+// TUBE — meshPhysicalMaterial avec clearcoat pour l'aspect galva zinc
 // ==========================================
-function Tube({ start, end, radius, color, metalness = 0.6, roughness = 0.35 }: {
+function Tube({ start, end, radius, color, metalness = 0.6, roughness = 0.35, clearcoat = 0.3 }: {
   start: [number, number, number]; end: [number, number, number];
-  radius: number; color: string; metalness?: number; roughness?: number;
+  radius: number; color: string; metalness?: number; roughness?: number; clearcoat?: number;
 }) {
-  const ref = useRef<THREE.Mesh>(null);
   const { position, quaternion, length } = useMemo(() => {
     const s = new THREE.Vector3(...start);
     const e = new THREE.Vector3(...end);
@@ -46,16 +60,21 @@ function Tube({ start, end, radius, color, metalness = 0.6, roughness = 0.35 }: 
   }, [start, end]);
   if (length < 0.001) return null;
   return (
-    <mesh ref={ref} position={position} quaternion={quaternion}>
-      <cylinderGeometry args={[radius, radius, length, 16]} />
-      <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} />
+    <mesh position={position} quaternion={quaternion} castShadow receiveShadow>
+      <cylinderGeometry args={[radius, radius, length, 12]} />
+      <meshPhysicalMaterial
+        color={color} metalness={metalness} roughness={roughness}
+        envMapIntensity={0.8}
+        clearcoat={clearcoat} clearcoatRoughness={0.4}
+      />
     </mesh>
   );
 }
 
-const PLATFORM_GREY = '#707880';
-const TRAP_BROWN = '#8B5E3C';
-const TRAP_HOLE_COLOR = '#3a3a3a';
+// 3 teintes alternées pour simuler les lots différents de plateaux aluminium
+const PLANK_SHADES = ['#7a8a9a', '#8494a4', '#8c9cac'];
+const TRAP_BROWN = '#9B6E4C';       // bois multiplex trappe
+const TRAP_HOLE_COLOR = '#2a2a2a';
 
 // Layher Allround : plateau 0.32m, demi-plateau 0.19m, trappe 0.64m
 // Les plateaux couvrent tout l'espace (crochets sur moises), gaps visuels seulement
@@ -67,9 +86,9 @@ const DEMI_COLOR = '#606870'; // gris légèrement plus foncé pour le demi
 // Largeurs qui nécessitent un demi-plateau au milieu
 const NEEDS_DEMI = [1.57, 2.57];
 
-function Platform({ x, y, z, width, depth, plankAxis, hasTrap }: {
+function Platform({ x, y, z, width, depth, plankAxis, hasTrap, trapSide = 'start' }: {
   x: number; y: number; z: number; width: number; depth: number;
-  plankAxis: 'x' | 'z'; hasTrap?: boolean;
+  plankAxis: 'x' | 'z'; hasTrap?: boolean; trapSide?: 'start' | 'end';
 }) {
   const t = 0.04;
   const planks: React.ReactElement[] = [];
@@ -107,34 +126,38 @@ function Platform({ x, y, z, width, depth, plankAxis, hasTrap }: {
     const geoW = plankAxis === 'x' ? plankLen - 0.02 : visW;
     const geoD = plankAxis === 'x' ? visW : plankLen - 0.02;
     planks.push(
-      <mesh key={idx++} position={[cx, y - t / 2, cz]}>
+      <mesh key={idx++} position={[cx, y - t / 2, cz]} castShadow receiveShadow>
         <boxGeometry args={[geoW, t, geoD]} />
-        <meshStandardMaterial color={color} metalness={0.3} roughness={0.7} />
+        <meshPhysicalMaterial color={color} metalness={0.55} roughness={0.4} envMapIntensity={0.6} clearcoat={0.15} clearcoatRoughness={0.6} />
       </mesh>
     );
   };
 
   let off = 0;
 
-  // Trappe (marron + carré d'ouverture échelle)
-  if (hasTrap && aTrap > 0) {
+  // Fonction pour poser la trappe à la position courante
+  const addTrap = () => {
+    if (!hasTrap || aTrap <= 0) return;
     addPlank(off, aTrap, TRAP_BROWN);
     // Carré d'ouverture
     const holeSize = Math.min(aTrap * 0.7, plankLen * 0.3);
-    const cx = plankAxis === 'x' ? x + plankLen / 2 : x + off + aTrap / 2;
-    const cz = plankAxis === 'x' ? z + off + aTrap / 2 : z + plankLen / 2;
+    const hcx = plankAxis === 'x' ? x + plankLen / 2 : x + off + aTrap / 2;
+    const hcz = plankAxis === 'x' ? z + off + aTrap / 2 : z + plankLen / 2;
     planks.push(
-      <mesh key={idx++} position={[cx, y - t / 2 + 0.005, cz]}>
+      <mesh key={idx++} position={[hcx, y - t / 2 + 0.005, hcz]}>
         <boxGeometry args={[plankAxis === 'x' ? holeSize : holeSize * 0.9, 0.006, plankAxis === 'x' ? holeSize * 0.9 : holeSize]} />
         <meshStandardMaterial color={TRAP_HOLE_COLOR} metalness={0.1} roughness={0.9} />
       </mesh>
     );
     off += aTrap;
-  }
+  };
 
-  // Première moitié de plateaux
+  // Trappe au début (côté z1 / x1)
+  if (trapSide === 'start') addTrap();
+
+  // Première moitié de plateaux (teinte alternée par planche)
   for (let i = 0; i < halfPlateaux; i++) {
-    addPlank(off, aPlank, PLATFORM_GREY);
+    addPlank(off, aPlank, PLANK_SHADES[(idx + i) % 3]);
     off += aPlank;
   }
 
@@ -146,36 +169,39 @@ function Platform({ x, y, z, width, depth, plankAxis, hasTrap }: {
 
   // Deuxième moitié de plateaux
   for (let i = 0; i < otherHalf; i++) {
-    addPlank(off, aPlank, PLATFORM_GREY);
+    addPlank(off, aPlank, PLANK_SHADES[(idx + halfPlateaux + i) % 3]);
     off += aPlank;
   }
+
+  // Trappe à la fin (côté z2 / x2)
+  if (trapSide === 'end') addTrap();
 
   return <group>{planks}</group>;
 }
 
 function ToeboardH({ x1, x2, y, z }: { x1: number; x2: number; y: number; z: number }) {
   return (
-    <mesh position={[(x1 + x2) / 2, y + 0.075, z]}>
-      <boxGeometry args={[x2 - x1, 0.15, 0.003]} />
-      <meshStandardMaterial color={TOEBOARD_COLOR} metalness={0.2} roughness={0.6} />
+    <mesh position={[(x1 + x2) / 2, y + 0.075, z]} castShadow receiveShadow>
+      <boxGeometry args={[x2 - x1, 0.15, 0.004]} />
+      <meshStandardMaterial color={TOEBOARD_COLOR} metalness={0.3} roughness={0.5} envMapIntensity={0.5} />
     </mesh>
   );
 }
 
 function ToeboardV({ x, y, z1, z2 }: { x: number; y: number; z1: number; z2: number }) {
   return (
-    <mesh position={[x, y + 0.075, (z1 + z2) / 2]}>
-      <boxGeometry args={[0.003, 0.15, z2 - z1]} />
-      <meshStandardMaterial color={TOEBOARD_COLOR} metalness={0.2} roughness={0.6} />
+    <mesh position={[x, y + 0.075, (z1 + z2) / 2]} castShadow receiveShadow>
+      <boxGeometry args={[0.004, 0.15, z2 - z1]} />
+      <meshStandardMaterial color={TOEBOARD_COLOR} metalness={0.3} roughness={0.5} envMapIntensity={0.5} />
     </mesh>
   );
 }
 
 function Rosette({ x, y, z }: { x: number; y: number; z: number }) {
   return (
-    <mesh position={[x, y, z]}>
-      <sphereGeometry args={[0.015, 12, 12]} />
-      <meshStandardMaterial color={ROSETTE_COLOR} metalness={0.7} roughness={0.3} />
+    <mesh position={[x, y, z]} castShadow>
+      <sphereGeometry args={[0.015, 8, 8]} />
+      <meshPhysicalMaterial color={ROSETTE_COLOR} metalness={0.8} roughness={0.15} envMapIntensity={0.9} clearcoat={0.5} clearcoatRoughness={0.25} />
     </mesh>
   );
 }
@@ -184,23 +210,28 @@ function BaseJack({ x, z, heightM, inverted }: {
   x: number; z: number; heightM: number; inverted?: boolean;
 }) {
   const plateSize = 0.15; const plateH = 0.008; const tR = 0.012;
+  const caleSize = 0.17; const caleH = 0.012;
   if (inverted) {
     const topY = heightM; const botY = heightM - 0.40;
     return (<group>
-      <mesh position={[x, topY - plateH / 2, z]}><boxGeometry args={[plateSize, plateH, plateSize]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.7} roughness={0.3} /></mesh>
+      {/* Cale jaune sur le vérin inversé (en haut) */}
+      <mesh position={[x, topY + caleH / 2, z]} castShadow receiveShadow><boxGeometry args={[caleSize, caleH, caleSize]} /><meshStandardMaterial color={CALE_COLOR} metalness={0.3} roughness={0.5} envMapIntensity={0.4} /></mesh>
+      <mesh position={[x, topY - plateH / 2, z]} castShadow receiveShadow><boxGeometry args={[plateSize, plateH, plateSize]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.7} roughness={0.3} envMapIntensity={0.6} /></mesh>
       <Tube start={[x, botY, z]} end={[x, topY - plateH, z]} radius={tR} color={STEEL_DARK} metalness={0.7} roughness={0.25} />
-      <mesh position={[x, botY + 0.02, z]}><cylinderGeometry args={[0.022, 0.022, 0.02, 6]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.6} roughness={0.3} /></mesh>
+      <mesh position={[x, botY + 0.02, z]} castShadow><cylinderGeometry args={[0.022, 0.022, 0.02, 6]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.6} roughness={0.3} envMapIntensity={0.6} /></mesh>
     </group>);
   }
   return (<group>
-    <mesh position={[x, plateH / 2, z]}><boxGeometry args={[plateSize, plateH, plateSize]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.7} roughness={0.3} /></mesh>
+    {/* Cale jaune sous le vérin (au sol) */}
+    <mesh position={[x, -caleH / 2, z]} castShadow receiveShadow><boxGeometry args={[caleSize, caleH, caleSize]} /><meshStandardMaterial color={CALE_COLOR} metalness={0.3} roughness={0.5} envMapIntensity={0.4} /></mesh>
+    <mesh position={[x, plateH / 2, z]} castShadow receiveShadow><boxGeometry args={[plateSize, plateH, plateSize]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.7} roughness={0.3} envMapIntensity={0.6} /></mesh>
     <Tube start={[x, plateH, z]} end={[x, heightM, z]} radius={tR} color={STEEL_DARK} metalness={0.7} roughness={0.25} />
-    <mesh position={[x, heightM - 0.02, z]}><cylinderGeometry args={[0.022, 0.022, 0.02, 6]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.6} roughness={0.3} /></mesh>
+    <mesh position={[x, heightM - 0.02, z]} castShadow><cylinderGeometry args={[0.022, 0.022, 0.02, 6]} /><meshStandardMaterial color={JACK_COLOR} metalness={0.6} roughness={0.3} envMapIntensity={0.6} /></mesh>
   </group>);
 }
 
 function Clamp({ x, y, z }: { x: number; y: number; z: number }) {
-  return (<mesh position={[x, y, z]}><torusGeometry args={[0.03, 0.008, 12, 24]} /><meshStandardMaterial color={CLAMP_COLOR} metalness={0.7} roughness={0.3} /></mesh>);
+  return (<mesh position={[x, y, z]} castShadow><torusGeometry args={[0.03, 0.008, 12, 24]} /><meshStandardMaterial color={CLAMP_COLOR} metalness={0.7} roughness={0.3} envMapIntensity={0.8} /></mesh>);
 }
 
 // ==========================================
@@ -221,16 +252,6 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
     () => mailles.map(m => getMailleRect(m)),
     [mailles],
   );
-
-  // Centre de la scene
-  const bounds = useMemo(() => {
-    let x1 = Infinity, z1 = Infinity, x2 = -Infinity, z2 = -Infinity;
-    for (const r of rects) {
-      x1 = Math.min(x1, r.x1); z1 = Math.min(z1, r.z1);
-      x2 = Math.max(x2, r.x2); z2 = Math.max(z2, r.z2);
-    }
-    return { cx: (x1 + x2) / 2, cz: (z1 + z2) / 2, w: x2 - x1, d: z2 - z1 };
-  }, [rects]);
 
   const elements = useMemo(() => {
     const els: React.ReactElement[] = [];
@@ -341,18 +362,22 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
         const pAxis: 'x' | 'z' = (m.plancherSens === 'longueur')
           ? (m.rotation === 0 ? 'x' : 'z')
           : (m.rotation === 0 ? 'z' : 'x');
-        els.push(<Platform key={key()} x={r.x1} y={py} z={r.z1} width={r.x2 - r.x1} depth={r.z2 - r.z1} plankAxis={pAxis} hasTrap={echelle && !m.aVide} />);
+        // Trappe alterne front/back à chaque niveau (comme les échelles)
+        const tSide: 'start' | 'end' = li % 2 === 0 ? 'start' : 'end';
+        els.push(<Platform key={key()} x={r.x1} y={py} z={r.z1} width={r.x2 - r.x1} depth={r.z2 - r.z1} plankAxis={pAxis} hasTrap={echelle && !m.aVide} trapSide={tSide} />);
 
         const accesMaxLevel = m.accesExterieur && m.accesExterieurPremierPalier ? (mLevels[0] || 2) : Infinity;
         const isAccesLevel = accesSide && lh <= accesMaxLevel;
 
-        // GC + plinthes par segment ouvert (pas par cote entier)
+        // GC + plinthes par segment ouvert — clearcoat plus fort pour le jaune laqué
+        const gcCC = 0.5; // clearcoat laqué
         // zmin : segments le long de X
         for (const [s, e] of segs.zmin) {
           const isAcces = accesSide === 'zmin' && isAccesLevel;
           const col = isAcces ? '#22aa44' : GOLD_COLOR;
           const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
-          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[s, py + gcH, r.z1]} end={[e, py + gcH, r.z1]} radius={rad} color={col} />);
+          const cc = isAcces ? 0.3 : gcCC;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[s, py + gcH, r.z1]} end={[e, py + gcH, r.z1]} radius={rad} color={col} metalness={0.5} roughness={0.3} clearcoat={cc} />);
           if (!isAcces) els.push(<ToeboardH key={key()} x1={s} x2={e} y={py} z={r.z1} />);
         }
         // zmax
@@ -360,7 +385,8 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
           const isAcces = accesSide === 'zmax' && isAccesLevel;
           const col = isAcces ? '#22aa44' : GOLD_COLOR;
           const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
-          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[s, py + gcH, r.z2]} end={[e, py + gcH, r.z2]} radius={rad} color={col} />);
+          const cc = isAcces ? 0.3 : gcCC;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[s, py + gcH, r.z2]} end={[e, py + gcH, r.z2]} radius={rad} color={col} metalness={0.5} roughness={0.3} clearcoat={cc} />);
           if (!isAcces) els.push(<ToeboardH key={key()} x1={s} x2={e} y={py} z={r.z2} />);
         }
         // xmin : segments le long de Z
@@ -368,7 +394,8 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
           const isAcces = accesSide === 'xmin' && isAccesLevel;
           const col = isAcces ? '#22aa44' : GOLD_COLOR;
           const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
-          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[r.x1, py + gcH, s]} end={[r.x1, py + gcH, e]} radius={rad} color={col} />);
+          const cc = isAcces ? 0.3 : gcCC;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[r.x1, py + gcH, s]} end={[r.x1, py + gcH, e]} radius={rad} color={col} metalness={0.5} roughness={0.3} clearcoat={cc} />);
           if (!isAcces) els.push(<ToeboardV key={key()} x={r.x1} y={py} z1={s} z2={e} />);
         }
         // xmax
@@ -376,7 +403,8 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
           const isAcces = accesSide === 'xmax' && isAccesLevel;
           const col = isAcces ? '#22aa44' : GOLD_COLOR;
           const rad = isAcces ? GC_RADIUS * 1.2 : GC_RADIUS;
-          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[r.x2, py + gcH, s]} end={[r.x2, py + gcH, e]} radius={rad} color={col} />);
+          const cc = isAcces ? 0.3 : gcCC;
+          for (const gcH of [0.5, 1.0]) els.push(<Tube key={key()} start={[r.x2, py + gcH, s]} end={[r.x2, py + gcH, e]} radius={rad} color={col} metalness={0.5} roughness={0.3} clearcoat={cc} />);
           if (!isAcces) els.push(<ToeboardV key={key()} x={r.x2} y={py} z1={s} z2={e} />);
         }
       }
@@ -608,9 +636,9 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xEnd, cy, zBase]} end={[xEnd, cy, zBase + lenZ]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
             els.push(<Platform key={key()} x={xMin} y={cy} z={zBase} width={offset} depth={lenZ} plankAxis={dm.deportPlancherSens === 'longueur' ? 'z' : 'x'} />);
             for (const gcH of [0.5, 1.0]) {
-              els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase]} end={[xMin + offset, cy + gcH, zBase]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-              els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase + lenZ]} end={[xMin + offset, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-              els.push(<Tube key={key()} start={[xEnd, cy + gcH, zBase]} end={[xEnd, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} />);
+              els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase]} end={[xMin + offset, cy + gcH, zBase]} radius={GC_RADIUS} color={GOLD_COLOR} metalness={0.5} roughness={0.3} clearcoat={0.5} />);
+              els.push(<Tube key={key()} start={[xMin, cy + gcH, zBase + lenZ]} end={[xMin + offset, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} metalness={0.5} roughness={0.3} clearcoat={0.5} />);
+              els.push(<Tube key={key()} start={[xEnd, cy + gcH, zBase]} end={[xEnd, cy + gcH, zBase + lenZ]} radius={GC_RADIUS} color={GOLD_COLOR} metalness={0.5} roughness={0.3} clearcoat={0.5} />);
             }
             els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase} />);
             els.push(<ToeboardH key={key()} x1={xMin} x2={xMin + offset} y={cy} z={zBase + lenZ} />);
@@ -625,9 +653,9 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
             els.push(<Tube key={key()} start={[xBase, cy, zEnd]} end={[xBase + lenX, cy, zEnd]} radius={TUBE_RADIUS} color={CONSOLE_COLOR} />);
             els.push(<Platform key={key()} x={xBase} y={cy} z={zMin} width={lenX} depth={offset} plankAxis={dm.deportPlancherSens === 'longueur' ? 'x' : 'z'} />);
             for (const gcH of [0.5, 1.0]) {
-              els.push(<Tube key={key()} start={[xBase, cy + gcH, zMin]} end={[xBase, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-              els.push(<Tube key={key()} start={[xBase + lenX, cy + gcH, zMin]} end={[xBase + lenX, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} />);
-              els.push(<Tube key={key()} start={[xBase, cy + gcH, zEnd]} end={[xBase + lenX, cy + gcH, zEnd]} radius={GC_RADIUS} color={GOLD_COLOR} />);
+              els.push(<Tube key={key()} start={[xBase, cy + gcH, zMin]} end={[xBase, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} metalness={0.5} roughness={0.3} clearcoat={0.5} />);
+              els.push(<Tube key={key()} start={[xBase + lenX, cy + gcH, zMin]} end={[xBase + lenX, cy + gcH, zMin + offset]} radius={GC_RADIUS} color={GOLD_COLOR} metalness={0.5} roughness={0.3} clearcoat={0.5} />);
+              els.push(<Tube key={key()} start={[xBase, cy + gcH, zEnd]} end={[xBase + lenX, cy + gcH, zEnd]} radius={GC_RADIUS} color={GOLD_COLOR} metalness={0.5} roughness={0.3} clearcoat={0.5} />);
             }
             els.push(<ToeboardV key={key()} x={xBase} y={cy} z1={zMin} z2={zMin + offset} />);
             els.push(<ToeboardV key={key()} x={xBase + lenX} y={cy} z1={zMin} z2={zMin + offset} />);
@@ -646,32 +674,58 @@ function ScaffoldScene({ pc }: { pc: PlannerConfig }) {
   }, [pc, rects]);
 
   return (
-    <group position={[-bounds.cx, 0, -bounds.cz]}>
+    <group>
       {elements}
     </group>
   );
+}
+
+// PRNG déterministe (mulberry32) — texture identique à chaque rendu
+function seededRandom(seed: number) {
+  let s = seed | 0;
+  return () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
 // ==========================================
 // SOL
 // ==========================================
 function Ground() {
+  const groundTex = useMemo(() => {
+    const rng = seededRandom(7);
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#161620';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 12000; i++) {
+      const x = rng() * 512;
+      const y = rng() * 512;
+      const v = 16 + rng() * 22;
+      ctx.fillStyle = `rgba(${v},${v},${v + 3},0.25)`;
+      ctx.fillRect(x, y, 2, 2);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(20, 20);
+    tex.anisotropy = 4;
+    return tex;
+  }, []);
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-        <planeGeometry args={[50, 50]} />
-        <meshStandardMaterial color="#1e1e24" metalness={0} roughness={0.95} />
+        <planeGeometry args={[500, 500]} />
+        <meshStandardMaterial map={groundTex} metalness={0} roughness={0.95} />
       </mesh>
       <Grid
         position={[0, -0.01, 0]}
-        args={[50, 50]}
-        cellSize={0.5}
+        args={[500, 500]}
+        cellSize={1}
         cellThickness={0.5}
         cellColor="#303040"
-        sectionSize={2}
+        sectionSize={10}
         sectionThickness={1}
         sectionColor="#404055"
-        fadeDistance={25}
+        fadeDistance={200}
         fadeStrength={1}
         infiniteGrid
       />
@@ -679,47 +733,78 @@ function Ground() {
   );
 }
 
+
 // ==========================================
 // EXPORT
 // ==========================================
 export function ScaffoldViewer3D({ plannerConfig }: { plannerConfig: PlannerConfig }) {
   const totalH = Math.max(...plannerConfig.mailles.map(m => m.hauteurPlancher), plannerConfig.hauteurPlancher) + 1.55;
   const rects = plannerConfig.mailles.map(m => getMailleRect(m));
-  let maxSpan = 3;
-  for (const r of rects) {
-    maxSpan = Math.max(maxSpan, r.x2 - r.x1, r.z2 - r.z1);
-  }
-  // Taille globale
+
   let gx1 = Infinity, gz1 = Infinity, gx2 = -Infinity, gz2 = -Infinity;
   for (const r of rects) { gx1 = Math.min(gx1, r.x1); gz1 = Math.min(gz1, r.z1); gx2 = Math.max(gx2, r.x2); gz2 = Math.max(gz2, r.z2); }
   const globalSpan = Math.max(gx2 - gx1, gz2 - gz1, 3);
-  const cameraD = Math.max(totalH, globalSpan) * 1.3;
-  const cameraY = totalH * 0.6;
+
+  const cameraD = Math.max(totalH, globalSpan) * 1.5;
+  const fogFar = 60;
+  const shadowScale = 40;
+
+  const cx = (gx1 + gx2) / 2 || 0;
+  const cz = (gz1 + gz2) / 2 || 0;
 
   return (
     <Canvas
       shadows
       gl={{ antialias: true, alpha: false, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
+      onCreated={({ gl }) => { gl.shadowMap.type = THREE.PCFSoftShadowMap; }}
       dpr={[1, 2]}
       style={{ background: '#0e0e14' }}
     >
-      <PerspectiveCamera makeDefault position={[cameraD * 0.8, cameraY + 1, cameraD * 0.6]} fov={42} />
-      <OrbitControls target={[0, totalH * 0.4, 0]} enableDamping dampingFactor={0.08} minDistance={1} maxDistance={50} maxPolarAngle={Math.PI / 2 + 0.05} />
-      <ambientLight intensity={0.3} />
-      <directionalLight
-        position={[10, 15, 8]} intensity={1.5} castShadow
-        shadow-mapSize={2048} shadow-bias={-0.0002}
-        shadow-camera-left={-15} shadow-camera-right={15}
-        shadow-camera-top={15} shadow-camera-bottom={-15}
+      <PerspectiveCamera makeDefault position={[cx + cameraD * 0.6, cameraD * 0.55, cz + cameraD * 0.6]} fov={45} near={0.1} far={1200} />
+      <OrbitControls
+        target={[cx, totalH * 0.3, cz]}
+        enableDamping dampingFactor={0.08}
+        minDistance={0.5} maxDistance={500}
+        maxPolarAngle={Math.PI / 2 + 0.05}
+        rotateSpeed={0.7}
       />
-      <directionalLight position={[-6, 10, -4]} intensity={0.4} color="#b0c4de" />
-      <pointLight position={[0, totalH + 2, 0]} intensity={0.3} distance={totalH * 3} />
-      <hemisphereLight args={['#c0d0e8', '#1a1a24', 0.6]} />
-      <Environment preset="city" backgroundIntensity={0} environmentIntensity={0.15} />
-      <fog attach="fog" args={['#0e0e14', 30, 60]} />
+      <ambientLight intensity={0.18} color="#e8eaf0" />
+      <directionalLight
+        position={[50, 80, 40]} intensity={2.2} castShadow
+        shadow-mapSize={4096} shadow-bias={-0.0001}
+        shadow-camera-left={-shadowScale} shadow-camera-right={shadowScale}
+        shadow-camera-top={shadowScale} shadow-camera-bottom={-shadowScale}
+        shadow-normalBias={0.04}
+        color="#ffffff"
+      />
+      <directionalLight position={[-30, 60, -20]} intensity={0.6} color="#a0b8d8" />
+      <directionalLight position={[20, 40, -50]} intensity={0.3} color="#d0c8b0" />
+      <pointLight position={[0, totalH + 2, 0]} intensity={0.3} distance={totalH * 3} color="#ffffff" decay={2} />
+      <hemisphereLight args={['#c0d0e8', '#0a0a14', 0.65]} />
+      <Environment preset="warehouse" backgroundIntensity={0} environmentIntensity={0.4} />
+      <fog attach="fog" args={['#0e0e14', fogFar * 0.55, fogFar * 1.1]} />
       <Ground />
-      <ContactShadows position={[0, 0.001, 0]} opacity={0.5} scale={40} blur={2.5} far={12} resolution={512} />
       <ScaffoldScene pc={plannerConfig} />
+      <EffectComposer multisampling={4}>
+        <N8AO
+          aoRadius={0.8}
+          intensity={4.0}
+          /* @ts-expect-error aoTones exists at runtime */
+          aoTones={0.35}
+          halfRes
+        />
+        <Bloom
+          intensity={0.18}
+          luminanceThreshold={0.75}
+          luminanceSmoothing={0.4}
+          mipmapBlur
+        />
+        <Vignette
+          offset={0.25}
+          darkness={0.55}
+          blendFunction={BlendFunction.NORMAL}
+        />
+      </EffectComposer>
     </Canvas>
   );
 }

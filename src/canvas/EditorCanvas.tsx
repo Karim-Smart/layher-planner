@@ -298,7 +298,7 @@ export function EditorCanvas() {
     <div
       ref={containerRef}
       className="canvas-container flex-1 relative overflow-hidden"
-      style={{ background: '#08080c' }}
+      style={{ background: '#f0f0f4' }}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onContextMenu={(e) => e.preventDefault()}
@@ -408,22 +408,22 @@ function ContextMenu({
 }) {
   return (
     <div
-      className="fixed z-50 glass-panel rounded-lg py-1 shadow-2xl min-w-[160px] border border-white/10"
+      className="fixed z-50 glass-panel rounded-lg py-1 shadow-2xl min-w-[160px] border border-black/[0.08]"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
-      <button onClick={onRotate} className="w-full text-left px-3 py-1.5 text-xs hover:bg-white/8 flex items-center justify-between transition-colors">
+      <button onClick={onRotate} className="w-full text-left px-3 py-1.5 text-xs hover:bg-black/[0.04] flex items-center justify-between transition-colors">
         <span>Rotation</span>
-        <kbd className="text-[9px] text-[#555566] bg-white/5 px-1 rounded">R</kbd>
+        <kbd className="text-[9px] text-[#aeaeb2] bg-black/[0.04] px-1 rounded">R</kbd>
       </button>
-      <button onClick={onDuplicate} className="w-full text-left px-3 py-1.5 text-xs hover:bg-white/8 flex items-center justify-between transition-colors">
+      <button onClick={onDuplicate} className="w-full text-left px-3 py-1.5 text-xs hover:bg-black/[0.04] flex items-center justify-between transition-colors">
         <span>Dupliquer</span>
-        <kbd className="text-[9px] text-[#555566] bg-white/5 px-1 rounded">Ctrl+D</kbd>
+        <kbd className="text-[9px] text-[#aeaeb2] bg-black/[0.04] px-1 rounded">Ctrl+D</kbd>
       </button>
-      <div className="my-1 border-t border-white/8" />
-      <button onClick={onDelete} className="w-full text-left px-3 py-1.5 text-xs hover:bg-white/8 text-red-400 flex items-center justify-between transition-colors">
+      <div className="my-1 border-t border-black/[0.06]" />
+      <button onClick={onDelete} className="w-full text-left px-3 py-1.5 text-xs hover:bg-black/[0.04] text-red-600 flex items-center justify-between transition-colors">
         <span>Supprimer</span>
-        <kbd className="text-[9px] text-red-400/50 bg-white/5 px-1 rounded">Del</kbd>
+        <kbd className="text-[9px] text-red-600/50 bg-black/[0.04] px-1 rounded">Del</kbd>
       </button>
     </div>
   );

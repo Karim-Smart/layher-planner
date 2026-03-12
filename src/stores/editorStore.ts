@@ -57,6 +57,9 @@ interface EditorState {
   // Planner view
   showPlanner: boolean;
 
+  // EDF viewer
+  showEDF: boolean;
+
   // Dirty flag
   isDirty: boolean;
   lastSavedAt: number | null;
@@ -83,6 +86,7 @@ interface EditorState {
   setShowBOM: (show: boolean) => void;
   setShowGenerator: (show: boolean) => void;
   setShowPlanner: (show: boolean) => void;
+  setShowEDF: (show: boolean) => void;
   bulkAddPieces: (viewPieces: Record<ViewMode, { definitionId: string; x: number; y: number }[]>) => void;
   setMousePos: (x: number, y: number) => void;
   setDraggingId: (id: string | null) => void;
@@ -141,6 +145,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   showBOM: false,
   showGenerator: false,
   showPlanner: true,
+  showEDF: false,
   isDirty: false,
   lastSavedAt: null,
   toasts: [],
@@ -255,6 +260,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setShowBOM: (show) => set({ showBOM: show }),
   setShowGenerator: (show) => set({ showGenerator: show }),
   setShowPlanner: (show) => set({ showPlanner: show }),
+  setShowEDF: (show) => set({ showEDF: show }),
 
   bulkAddPieces: (viewPiecesInput) => {
     const state = get();

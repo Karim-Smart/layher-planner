@@ -1,7 +1,7 @@
 import type { PlacedPiece } from '../catalog/types';
 import type { ViewMode } from '../stores/editorStore';
 
-const STORAGE_KEY = 'layher-planner-projects';
+const STORAGE_KEY = 'echaf3d-projects';
 
 type ViewPieces = Record<ViewMode, PlacedPiece[]>;
 
@@ -45,7 +45,7 @@ export function exportJSON(name: string, viewPieces: ViewPieces): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${name.replace(/\s+/g, '-')}.layher.json`;
+  a.download = `${name.replace(/\s+/g, '-')}.echaf3d.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

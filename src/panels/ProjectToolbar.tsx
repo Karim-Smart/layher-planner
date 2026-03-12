@@ -11,7 +11,7 @@ import { calculateBOM } from '../engine/materialCalculator';
 const VIEW_MODES: ViewMode[] = ['face', 'side', 'top'];
 const VIEW_ICONS: Record<ViewMode, string> = { face: '▣', side: '▥', top: '⬡' };
 
-export function ProjectToolbar() {
+export function ProjectToolbar({ onBack }: { onBack?: () => void } = {}) {
   const {
     projectName, setProjectName, viewMode, setViewMode, viewPieces,
     getAllPieces, clearAll, setShowBOM, setShowPlanner,
@@ -63,15 +63,25 @@ export function ProjectToolbar() {
 
   return (
     <>
-      <div className="glass-panel flex items-center gap-1.5 px-3 py-1.5 border-b border-white/6">
+      <div className="glass-panel flex items-center gap-1.5 px-3 py-1.5 border-b border-black/[0.06]">
+        {/* Bouton retour accueil */}
+        {onBack && (
+          <>
+            <button onClick={onBack} className="glass-button !px-2 !py-1.5 text-[11px] flex items-center gap-1 text-[#6e6e73] hover:text-[#1d1d1f]">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              Accueil
+            </button>
+            <div className="divider-v" />
+          </>
+        )}
         {/* Logo */}
         <div className="flex items-center gap-2 mr-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#e8c840]/20 to-[#e8c840]/5 border border-[#e8c840]/20 flex items-center justify-center">
-            <Hexagon size={14} className="text-[#e8c840]" strokeWidth={2.5} />
+          <div className="w-7 h-7 rounded-lg bg-[#F2A900]/10 border border-[#F2A900]/20 flex items-center justify-center">
+            <Hexagon size={14} className="text-[#F2A900]" strokeWidth={2.5} />
           </div>
           <div className="hidden sm:block">
-            <span className="text-xs font-bold tracking-wide text-white/90">Layher</span>
-            <span className="text-xs font-light tracking-wide text-[#e8c840] ml-0.5">Planner</span>
+            <span className="text-xs font-bold tracking-wide text-[#1d1d1f]">Échaf'</span>
+            <span className="text-xs font-light tracking-wide text-[#c88800] ml-0.5">3D</span>
           </div>
         </div>
 
@@ -108,7 +118,7 @@ export function ProjectToolbar() {
         <div className="divider-v" />
 
         {/* View mode tabs */}
-        <div className="flex items-center bg-white/[0.02] rounded-lg p-0.5 gap-0.5">
+        <div className="flex items-center bg-black/[0.03] rounded-lg p-0.5 gap-0.5">
           {VIEW_MODES.map((mode) => {
             const isActive = viewMode === mode;
             const count = viewPieces[mode].length;
@@ -118,8 +128,8 @@ export function ProjectToolbar() {
                 onClick={() => setViewMode(mode)}
                 className={`relative text-[11px] px-3 py-1.5 rounded-md transition-all duration-200 flex items-center gap-1.5 ${
                   isActive
-                    ? 'bg-[#e8c840]/15 text-[#e8c840] font-semibold shadow-[0_0_12px_rgba(232,200,64,0.06)]'
-                    : 'text-[#666677] hover:text-white/70 hover:bg-white/[0.04]'
+                    ? 'bg-white text-[#c88800] font-semibold shadow-sm'
+                    : 'text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.03]'
                 }`}
               >
                 <span className="text-[10px] opacity-60">{VIEW_ICONS[mode]}</span>
@@ -127,8 +137,8 @@ export function ProjectToolbar() {
                 {count > 0 && (
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
                     isActive
-                      ? 'bg-[#e8c840]/15 text-[#e8c840]/70'
-                      : 'bg-white/[0.04] text-[#555566]'
+                      ? 'bg-[#F2A900]/10 text-[#c88800]'
+                      : 'bg-black/[0.04] text-[#aeaeb2]'
                   }`}>
                     {count}
                   </span>
@@ -149,7 +159,7 @@ export function ProjectToolbar() {
           />
           {isDirty && (
             <span
-              className="absolute top-1/2 -translate-y-1/2 right-2 w-2 h-2 bg-[#e8c840] rounded-full animate-pulse-glow"
+              className="absolute top-1/2 -translate-y-1/2 right-2 w-2 h-2 bg-[#F2A900] rounded-full animate-pulse-glow"
               title="Modifications non sauvegardées"
             />
           )}
@@ -213,7 +223,7 @@ function ToolbarButton({
       className={`p-1.5 rounded-md transition-all duration-150 ${
         disabled
           ? 'opacity-20 cursor-not-allowed'
-          : 'text-[#888899] hover:text-white/90 hover:bg-white/[0.06] active:scale-90'
+          : 'text-[#86868b] hover:text-[#1d1d1f] hover:bg-black/[0.04] active:scale-90'
       }`}
     >
       {icon}
@@ -233,26 +243,26 @@ function OpenProjectDropdown({
   return (
     <div className="fixed inset-0 z-40" onClick={onClose}>
       <div
-        className="absolute left-[140px] top-[44px] glass-panel rounded-xl w-72 py-2 shadow-2xl animate-modal-panel border border-white/8"
+        className="absolute left-[140px] top-[44px] glass-panel rounded-xl w-72 py-2 shadow-2xl animate-modal-panel border border-black/[0.08]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-3 pb-2 mb-1 border-b border-white/6">
+        <div className="px-3 pb-2 mb-1 border-b border-black/[0.06]">
           <span className="section-label">Projets sauvegardés</span>
         </div>
         {projects.length === 0 ? (
-          <p className="px-4 py-4 text-xs text-[#555566] text-center">Aucun projet sauvegardé</p>
+          <p className="px-4 py-4 text-xs text-[#aeaeb2] text-center">Aucun projet sauvegardé</p>
         ) : (
           <div className="max-h-[300px] overflow-y-auto">
             {projects.map((p) => (
               <button
                 key={p.name}
                 onClick={() => onLoad(p.name)}
-                className="w-full text-left px-4 py-2.5 text-xs hover:bg-white/[0.04] flex justify-between items-center transition-colors"
+                className="w-full text-left px-4 py-2.5 text-xs hover:bg-black/[0.03] flex justify-between items-center transition-colors"
               >
                 <div>
-                  <span className="font-medium text-white/80">{p.name}</span>
+                  <span className="font-medium text-[#1d1d1f]">{p.name}</span>
                 </div>
-                <span className="text-[10px] text-[#555566]">
+                <span className="text-[10px] text-[#aeaeb2]">
                   {new Date(p.savedAt).toLocaleDateString('fr-FR')}
                 </span>
               </button>

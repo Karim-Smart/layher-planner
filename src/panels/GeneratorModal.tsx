@@ -38,7 +38,7 @@ function SelectField({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <label className="text-[11px] text-[#888899]">{label}</label>
+      <label className="text-[11px] text-[#86868b]">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
@@ -65,20 +65,20 @@ function CheckboxField({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <label className="text-[11px] text-[#888899]">{label}</label>
+      <label className="text-[11px] text-[#86868b]">{label}</label>
       <button
         onClick={() => onChange(!checked)}
         className={`w-9 h-[18px] rounded-full transition-all duration-200 relative ${
           checked
-            ? 'bg-[#e8c840]/25 border border-[#e8c840]/40 shadow-[0_0_8px_rgba(232,200,64,0.1)]'
-            : 'bg-white/[0.04] border border-white/10'
+            ? 'bg-[#F2A900]/25 border border-[#F2A900]/40 shadow-[0_0_8px_rgba(232,200,64,0.1)]'
+            : 'bg-black/[0.04] border border-black/[0.1]'
         }`}
       >
         <span
           className={`absolute top-[2px] w-3.5 h-3.5 rounded-full transition-all duration-200 ${
             checked
-              ? 'left-[18px] bg-[#e8c840] shadow-[0_0_6px_rgba(232,200,64,0.4)]'
-              : 'left-[2px] bg-[#555566]'
+              ? 'left-[18px] bg-[#F2A900] shadow-[0_0_6px_rgba(232,200,64,0.4)]'
+              : 'left-[2px] bg-[#aeaeb2]'
           }`}
         />
       </button>
@@ -110,7 +110,7 @@ function AsciiPreview({ config }: { config: ScaffoldConfig }) {
   lines.push(`▽${'                ▽'.repeat(Math.min(n, 2))}  vérins`);
 
   return (
-    <pre className="text-[9px] leading-[13px] text-[#e8c840]/70 font-mono whitespace-pre overflow-x-auto">
+    <pre className="text-[9px] leading-[13px] text-[#F2A900]/70 font-mono whitespace-pre overflow-x-auto">
       {lines.join('\n')}
     </pre>
   );
@@ -151,15 +151,15 @@ function FullBOM({ breakdown }: { breakdown: Record<string, { count: number; wei
     <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
       {sortedCategories.map(([cat, { label, items }]) => (
         <div key={cat}>
-          <div className="text-[9px] uppercase tracking-wider text-[#e8c840]/60 font-semibold mb-0.5">
+          <div className="text-[9px] uppercase tracking-wider text-[#F2A900]/60 font-semibold mb-0.5">
             {label}
           </div>
           {items
             .sort((a, b) => b.count - a.count)
             .map(({ defId, name, count, weight, unitWeight }) => (
               <div key={defId} className="flex items-center justify-between text-[10px] py-px">
-                <span className="text-[#888899] truncate mr-2">{name}</span>
-                <span className="text-white/50 whitespace-nowrap">
+                <span className="text-[#86868b] truncate mr-2">{name}</span>
+                <span className="text-[#86868b] whitespace-nowrap">
                   {count}× ({unitWeight} kg/u) — {weight} kg
                 </span>
               </div>
@@ -255,7 +255,7 @@ export function GeneratorModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-modal-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-modal-backdrop"
       onClick={() => setShowGenerator(false)}
     >
       <div
@@ -265,19 +265,19 @@ export function GeneratorModal() {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#e8c840]/10 border border-[#e8c840]/20 flex items-center justify-center">
-              <Wand2 size={16} className="text-[#e8c840]" />
+            <div className="w-9 h-9 rounded-xl bg-[#F2A900]/10 border border-[#F2A900]/20 flex items-center justify-center">
+              <Wand2 size={16} className="text-[#F2A900]" />
             </div>
             <div>
               <h2 className="text-sm font-semibold">Générateur d'échafaudage</h2>
-              <p className="text-[9px] text-[#555566] mt-0.5">
+              <p className="text-[9px] text-[#aeaeb2] mt-0.5">
                 Configure les paramètres puis clique sur Générer
               </p>
             </div>
           </div>
           <button
             onClick={() => setShowGenerator(false)}
-            className="p-1.5 rounded-md hover:bg-white/[0.06] text-[#888899] hover:text-white/80 transition-colors"
+            className="p-1.5 rounded-md hover:bg-black/[0.04] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
           >
             <X size={14} />
           </button>
@@ -285,7 +285,7 @@ export function GeneratorModal() {
 
         {/* Form */}
         <div className="space-y-2.5 mb-4">
-          <div className="text-[10px] uppercase tracking-wider text-[#555566] font-semibold mt-1">
+          <div className="text-[10px] uppercase tracking-wider text-[#aeaeb2] font-semibold mt-1">
             Dimensions
           </div>
 
@@ -299,7 +299,7 @@ export function GeneratorModal() {
 
           {/* Paliers (checkboxes) */}
           <div className="flex items-start justify-between">
-            <label className="text-xs text-[#888899] pt-0.5">Paliers</label>
+            <label className="text-xs text-[#86868b] pt-0.5">Paliers</label>
             <div className="flex flex-wrap gap-1.5 max-w-[220px] justify-end">
               {availableLevels.map((level) => {
                 const isChecked = config.levels.includes(level);
@@ -309,8 +309,8 @@ export function GeneratorModal() {
                     onClick={() => toggleLevel(level)}
                     className={`px-2 py-0.5 text-[10px] rounded transition-all ${
                       isChecked
-                        ? 'bg-[#e8c840]/20 border border-[#e8c840]/50 text-[#e8c840]'
-                        : 'bg-white/5 border border-white/10 text-[#555566]'
+                        ? 'bg-[#F2A900]/20 border border-[#F2A900]/50 text-[#F2A900]'
+                        : 'bg-black/[0.04] border border-black/[0.1] text-[#aeaeb2]'
                     }`}
                   >
                     {level}m
@@ -328,7 +328,7 @@ export function GeneratorModal() {
             format={(v) => `${v}m`}
           />
           <div className="flex items-center justify-between">
-            <label className="text-xs text-[#888899]">Nombre de travées</label>
+            <label className="text-xs text-[#86868b]">Nombre de travées</label>
             <input
               type="number"
               min={1}
@@ -342,7 +342,7 @@ export function GeneratorModal() {
           {/* Mailles à vide */}
           {config.bayCount > 1 && (
             <div className="flex items-start justify-between">
-              <label className="text-xs text-[#888899] pt-0.5">Mailles à vide</label>
+              <label className="text-xs text-[#86868b] pt-0.5">Mailles à vide</label>
               <div className="flex gap-1.5">
                 {Array.from({ length: config.bayCount }, (_, i) => {
                   const isEmpty = config.emptyBays.includes(i);
@@ -354,7 +354,7 @@ export function GeneratorModal() {
                       className={`w-8 h-6 text-[9px] rounded transition-all flex items-center justify-center ${
                         isEmpty
                           ? 'bg-red-500/15 border border-red-500/40 text-red-400'
-                          : 'bg-white/5 border border-white/10 text-[#888899]'
+                          : 'bg-black/[0.04] border border-black/[0.1] text-[#86868b]'
                       }`}
                     >
                       {isEmpty ? '░' : `T${i + 1}`}
@@ -380,8 +380,8 @@ export function GeneratorModal() {
             format={(v) => `${v}cm`}
           />
 
-          <div className="w-full h-px bg-white/5 my-1" />
-          <div className="text-[10px] uppercase tracking-wider text-[#555566] font-semibold">
+          <div className="w-full h-px bg-black/[0.04] my-1" />
+          <div className="text-[10px] uppercase tracking-wider text-[#aeaeb2] font-semibold">
             Options
           </div>
 
@@ -416,23 +416,23 @@ export function GeneratorModal() {
 
         {/* Preview */}
         <div className="glass-card p-3 mb-4">
-          <div className="text-[10px] uppercase tracking-wider text-[#555566] font-semibold mb-2">
+          <div className="text-[10px] uppercase tracking-wider text-[#aeaeb2] font-semibold mb-2">
             Aperçu
           </div>
           <AsciiPreview config={config} />
 
           <div className="flex gap-4 mt-3 text-xs">
             <div>
-              <span className="text-[#555566]">Pièces : </span>
-              <span className="text-[#e8c840] font-semibold">{result.summary.totalPieces}</span>
+              <span className="text-[#aeaeb2]">Pièces : </span>
+              <span className="text-[#F2A900] font-semibold">{result.summary.totalPieces}</span>
             </div>
             <div>
-              <span className="text-[#555566]">Poids : </span>
-              <span className="text-[#e8c840] font-semibold">{result.summary.totalWeight} kg</span>
+              <span className="text-[#aeaeb2]">Poids : </span>
+              <span className="text-[#F2A900] font-semibold">{result.summary.totalWeight} kg</span>
             </div>
             <div>
-              <span className="text-[#555566]">Vues : </span>
-              <span className="text-white/70">
+              <span className="text-[#aeaeb2]">Vues : </span>
+              <span className="text-[#1d1d1f]/80">
                 F:{result.pieces.face.length} C:{result.pieces.side.length} D:{result.pieces.top.length}
               </span>
             </div>
@@ -441,7 +441,7 @@ export function GeneratorModal() {
           {/* Approvisionnement complet */}
           <div className="divider-h my-3" />
           <div className="flex items-center gap-1.5 mb-2">
-            <Package size={11} className="text-[#555566]" />
+            <Package size={11} className="text-[#aeaeb2]" />
             <span className="section-label">Approvisionnement</span>
           </div>
           <FullBOM breakdown={result.summary.breakdown} />

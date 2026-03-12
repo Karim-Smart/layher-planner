@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle, AlertTriangle, Info, X, Keyboard } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Info, X, Keyboard, ArrowLeft } from 'lucide-react';
 import { ProjectToolbar } from './panels/ProjectToolbar';
 import { PiecePalette } from './panels/PiecePalette';
 import { EditorCanvas } from './canvas/EditorCanvas';
@@ -9,6 +9,9 @@ import { MaterialList } from './panels/MaterialList';
 import { PlannerView } from './panels/PlannerView';
 import { useEditorStore } from './stores/editorStore';
 import { saveProject } from './engine/serializer';
+import LigneComplete from './calo/components/LigneComplete/index.jsx';
+
+type Section = 'home' | 'echaf' | 'calo';
 
 const TOAST_ICONS = {
   success: <CheckCircle size={13} />,
@@ -26,9 +29,9 @@ function ToastContainer() {
         <div
           key={t.id}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-medium shadow-xl backdrop-blur-md animate-toast ${
-            t.type === 'success' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20 shadow-emerald-500/10' :
-            t.type === 'warning' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/20 shadow-amber-500/10' :
-            'bg-white/8 text-white/75 border border-white/10'
+            t.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+            t.type === 'warning' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+            'bg-white text-[#1d1d1f] border border-black/10 shadow-lg'
           }`}
         >
           {TOAST_ICONS[t.type]}
@@ -56,7 +59,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-modal-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-modal-backdrop"
       onClick={onClose}
     >
       <div
@@ -65,22 +68,22 @@ function HelpModal({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#3b82f6]/10 border border-[#3b82f6]/20 flex items-center justify-center">
-              <Keyboard size={15} className="text-[#60a5fa]" />
+            <div className="w-8 h-8 rounded-lg bg-[#007aff]/10 border border-[#007aff]/20 flex items-center justify-center">
+              <Keyboard size={15} className="text-[#007aff]" />
             </div>
-            <h2 className="text-sm font-semibold">Raccourcis clavier</h2>
+            <h2 className="text-sm font-semibold text-[#1d1d1f]">Raccourcis clavier</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-white/[0.06] text-[#888899] hover:text-white/80 transition-colors"
+            className="p-1.5 rounded-md hover:bg-black/[0.04] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
           >
             <X size={14} />
           </button>
         </div>
         <div className="space-y-0.5">
           {shortcuts.map(([key, desc]) => (
-            <div key={key} className="flex items-center justify-between py-1.5 px-1 rounded hover:bg-white/[0.02] transition-colors">
-              <span className="text-[11px] text-[#888899]">{desc}</span>
+            <div key={key} className="flex items-center justify-between py-1.5 px-1 rounded hover:bg-black/[0.02] transition-colors">
+              <span className="text-[11px] text-[#86868b]">{desc}</span>
               <kbd className="text-[10px]">{key}</kbd>
             </div>
           ))}
@@ -90,7 +93,108 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function App() {
+/* ─── Page d'accueil ─── */
+
+function HomePage({ onNavigate }: { onNavigate: (s: Section) => void }) {
+  const sections = [
+    {
+      id: 'echaf' as Section,
+      title: 'Échaf\' 3D',
+      desc: 'Planification d\'échafaudages Layher — éditeur canvas 2D/3D avec catalogue de pièces, snap magnétique et calcul BOM',
+      color: 'from-amber-500 to-orange-600',
+      icon: (
+        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+        </svg>
+      ),
+    },
+    {
+      id: 'calo' as Section,
+      title: 'Calorifugeur',
+      desc: 'Ligne complète de tuyauterie — éditeur de pièces, vues 2D/3D, patrons de découpe tôle et laine, récapitulatif matériaux',
+      color: 'from-blue-500 to-indigo-600',
+      icon: (
+        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16 L4 10 A6 6 0 0 1 10 4 L20 4" />
+          <circle cx="4" cy="18" r="2" />
+          <circle cx="20" cy="4" r="2" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div className="h-screen flex flex-col bg-[#f5f5f7]">
+      {/* Header */}
+      <header className="glass-panel px-6 py-4 flex items-center gap-3 border-b border-black/[0.06]">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+          EB
+        </div>
+        <div>
+          <h1 className="text-sm font-semibold text-[#1d1d1f]">Échaf' Belleville</h1>
+          <p className="text-[10px] text-[#86868b]">Outils métier — échafaudage & calorifuge</p>
+        </div>
+      </header>
+
+      {/* Cards */}
+      <main className="flex-1 flex items-center justify-center p-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl w-full">
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onNavigate(s.id)}
+              className="group glass-card p-6 text-left hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer"
+            >
+              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center text-white shadow-lg mb-4 group-hover:shadow-xl transition-shadow`}>
+                {s.icon}
+              </div>
+              <h2 className="text-lg font-semibold text-[#1d1d1f] mb-1">{s.title}</h2>
+              <p className="text-xs text-[#86868b] leading-relaxed">{s.desc}</p>
+            </button>
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ─── Section Calorifugeur ─── */
+
+function CaloSection({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="h-screen flex flex-col bg-[#f5f5f7]">
+      {/* Header */}
+      <header className="glass-panel px-4 py-3 flex items-center gap-3 border-b border-black/[0.06]">
+        <button
+          onClick={onBack}
+          className="glass-button !px-2.5 !py-1.5"
+        >
+          <ArrowLeft size={14} />
+          <span className="text-[11px]">Accueil</span>
+        </button>
+        <div className="w-px h-5 bg-black/[0.06]" />
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+          C
+        </div>
+        <div>
+          <h1 className="text-sm font-semibold text-[#1d1d1f]">Calorifugeur — Ligne Complète</h1>
+          <p className="text-[10px] text-[#86868b]">Construire une ligne et générer les patrons de découpe</p>
+        </div>
+      </header>
+
+      {/* Contenu */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-2xl mx-auto py-4">
+          <LigneComplete />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ─── Section Échafaudage (le code existant) ─── */
+
+function EchafSection({ onBack }: { onBack: () => void }) {
   const {
     selectedIds, removePiece, rotatePiece, duplicatePiece,
     undo, redo, resetView, projectName, viewPieces, isDirty,
@@ -158,8 +262,8 @@ export default function App() {
   }, [selectedIds, removePiece, rotatePiece, duplicatePiece, undo, redo, resetView, projectName, viewPieces, isDirty, markSaved, addToast]);
 
   return (
-    <div className="h-screen flex flex-col bg-[#0a0a0f]">
-      <ProjectToolbar />
+    <div className="h-screen flex flex-col bg-[#f5f5f7]">
+      <ProjectToolbar onBack={onBack} />
       <div className="flex flex-1 overflow-hidden">
         <PiecePalette />
         <EditorCanvas />
@@ -172,4 +276,14 @@ export default function App() {
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
+}
+
+/* ─── App principal ─── */
+
+export default function App() {
+  const [section, setSection] = useState<Section>('home');
+
+  if (section === 'echaf') return <EchafSection onBack={() => setSection('home')} />;
+  if (section === 'calo') return <CaloSection onBack={() => setSection('home')} />;
+  return <HomePage onNavigate={setSection} />;
 }

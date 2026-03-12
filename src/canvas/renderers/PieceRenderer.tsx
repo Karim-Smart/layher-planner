@@ -667,13 +667,24 @@ function BaseJackRenderer({ w, h, ppm, def }: { w: number; h: number; ppm: numbe
 
   return (
     <>
+      {/* Cale jaune sous la platine */}
+      {(() => {
+        const caleW = plateW * 1.15;
+        const caleH = Math.max(plateH * 0.6, 2.5);
+        return (<>
+          <Rect x={-caleW / 2} y={-caleH} width={caleW} height={caleH}
+            fill="#F2A900" stroke="#c88800" strokeWidth={0.8} cornerRadius={0.5} listening={false} />
+          <Rect x={-caleW / 2} y={-caleH} width={caleW} height={caleH * 0.4}
+            fill="#fff" opacity={0.25} cornerRadius={[0.5, 0.5, 0, 0]} listening={false} />
+        </>);
+      })()}
       {/* Shadow */}
       <Rect
         x={-plateW / 2 + 2}
         y={-plateH + 2}
         width={plateW}
         height={plateH}
-        fill="rgba(0,0,0,0.2)"
+        fill="rgba(0,0,0,0.15)"
         cornerRadius={1}
         listening={false}
       />
@@ -1120,9 +1131,9 @@ function TubeRenderer({ w, h, ppm }: { w: number; h: number; ppm: number }) {
       <Rect x={3} y={tubeH * 0.1} width={w - 6} height={tubeH * 0.35} fill={STEEL.shadow} opacity={0.25} cornerRadius={[0, 0, tubeH / 2, tubeH / 2]} listening={false} />
       {/* Extrémités — section ronde visible */}
       <Circle x={0} y={0} radius={tubeH / 2 + 0.5} fill={STEEL.dark} stroke={STEEL.outline} strokeWidth={0.6} listening={false} />
-      <Circle x={0} y={0} radius={tubeH / 2 - 1.5} fill="#0a0a0f" listening={false} />
+      <Circle x={0} y={0} radius={tubeH / 2 - 1.5} fill="#f0f0f4" listening={false} />
       <Circle x={w} y={0} radius={tubeH / 2 + 0.5} fill={STEEL.dark} stroke={STEEL.outline} strokeWidth={0.6} listening={false} />
-      <Circle x={w} y={0} radius={tubeH / 2 - 1.5} fill="#0a0a0f" listening={false} />
+      <Circle x={w} y={0} radius={tubeH / 2 - 1.5} fill="#f0f0f4" listening={false} />
       {/* Outline */}
       <Rect x={0} y={-tubeH / 2} width={w} height={tubeH} stroke={STEEL.outline} strokeWidth={0.5} fill="transparent" cornerRadius={tubeH / 2} listening={false} />
     </>

@@ -66,31 +66,31 @@ export function MaterialList() {
   let lastCat = '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-modal-backdrop">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-modal-backdrop">
       <div className="glass-panel rounded-2xl w-[680px] max-h-[85vh] flex flex-col animate-modal-panel">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/6">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-black/[0.06]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#3b82f6]/10 border border-[#3b82f6]/20 flex items-center justify-center">
-              <ClipboardList size={16} className="text-[#60a5fa]" />
+            <div className="w-9 h-9 rounded-xl bg-[#007aff]/10 border border-[#007aff]/20 flex items-center justify-center">
+              <ClipboardList size={16} className="text-[#007aff]" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold">Liste de matériel</h2>
-              <p className="text-[9px] text-[#555566] mt-0.5">
+              <h2 className="text-sm font-semibold text-[#1d1d1f]">Liste de matériel</h2>
+              <p className="text-[9px] text-[#aeaeb2] mt-0.5">
                 {bom.totalPieces} pièces · {bom.entries.length} références · toutes vues
               </p>
             </div>
           </div>
           <button
             onClick={() => setShowBOM(false)}
-            className="p-1.5 rounded-md hover:bg-white/[0.06] text-[#888899] hover:text-white/80 transition-colors"
+            className="p-1.5 rounded-md hover:bg-black/[0.04] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
           >
             <X size={14} />
           </button>
         </div>
 
         {/* Search + stats */}
-        <div className="px-5 py-3 border-b border-white/4 flex items-center gap-3">
+        <div className="px-5 py-3 border-b border-black/[0.04] flex items-center gap-3">
           <div className="relative flex-1">
             <input
               value={search}
@@ -98,11 +98,11 @@ export function MaterialList() {
               placeholder="Filtrer par nom..."
               className="neo-input w-full text-[11px] pl-8"
             />
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#555566]" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#aeaeb2]" />
             {search && (
               <button
                 onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#555566] hover:text-white/70 transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#aeaeb2] hover:text-[#1d1d1f] transition-colors"
               >
                 <X size={12} />
               </button>
@@ -118,7 +118,7 @@ export function MaterialList() {
           {filteredEntries.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-3xl mb-2 opacity-15">📦</div>
-              <p className="text-[11px] text-[#555566]">
+              <p className="text-[11px] text-[#aeaeb2]">
                 {search ? `Aucun résultat pour « ${search} »` : 'Aucune pièce sur le canvas'}
               </p>
             </div>
@@ -146,12 +146,12 @@ export function MaterialList() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-white/6">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-black/[0.06]">
           <div className="text-[12px] flex items-center gap-2">
-            <span className="text-[#888899]">Total :</span>
-            <span className="font-semibold">{bom.totalPieces} pièces</span>
-            <span className="text-[#333344]">·</span>
-            <span className="font-semibold text-[#e8c840]">{bom.totalWeight} kg</span>
+            <span className="text-[#86868b]">Total :</span>
+            <span className="font-semibold text-[#1d1d1f]">{bom.totalPieces} pièces</span>
+            <span className="text-[#d1d1d6]">·</span>
+            <span className="font-semibold text-[#c88800]">{bom.totalWeight} kg</span>
           </div>
           <button onClick={handleExportCSV} className="glass-button text-[11px]">
             <Download size={12} />
@@ -172,11 +172,11 @@ function SortHeader({
   const isActive = currentKey === sortKey;
   return (
     <th
-      className={`cursor-pointer hover:text-white/80 transition-colors select-none ${align === 'right' ? 'text-right' : 'text-left'} ${className ?? ''}`}
+      className={`cursor-pointer hover:text-[#1d1d1f] transition-colors select-none ${align === 'right' ? 'text-right' : 'text-left'} ${className ?? ''}`}
       onClick={() => onToggle(sortKey)}
     >
       {label}
-      {isActive && <span className="ml-1 text-[#e8c840] text-[9px]">{dir === 'asc' ? '▲' : '▼'}</span>}
+      {isActive && <span className="ml-1 text-[#c88800] text-[9px]">{dir === 'asc' ? '▲' : '▼'}</span>}
     </th>
   );
 }
@@ -190,16 +190,16 @@ function BOMRow({ entry, showCatHeader, getCategoryLabel }: {
         <tr>
           <td
             colSpan={4}
-            className="pt-4 pb-1.5 text-[9px] font-semibold text-[#e8c840]/80 uppercase tracking-wider"
+            className="pt-4 pb-1.5 text-[9px] font-semibold text-[#c88800] uppercase tracking-wider"
           >
             {getCategoryLabel(entry.category)}
           </td>
         </tr>
       )}
       <tr>
-        <td className="pl-3 text-white/70">{entry.name}</td>
+        <td className="pl-3 text-[#1d1d1f]/80">{entry.name}</td>
         <td className="text-right font-semibold tabular-nums">{entry.quantity}</td>
-        <td className="text-right text-[#666677] tabular-nums">{entry.unitWeight} kg</td>
+        <td className="text-right text-[#86868b] tabular-nums">{entry.unitWeight} kg</td>
         <td className="text-right tabular-nums">{entry.totalWeight} kg</td>
       </tr>
     </>

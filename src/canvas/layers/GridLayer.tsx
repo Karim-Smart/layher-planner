@@ -80,7 +80,7 @@ export function GridLayer({ width, height, zoom, panX, panY }: GridLayerProps) {
         <Line
           key={`mv-${i}`}
           points={[i * minorCellPx, msY * minorCellPx, i * minorCellPx, meY * minorCellPx]}
-          stroke="rgba(255,255,255,0.02)"
+          stroke="rgba(0,0,0,0.025)"
           strokeWidth={0.5}
           listening={false}
         />
@@ -92,7 +92,7 @@ export function GridLayer({ width, height, zoom, panX, panY }: GridLayerProps) {
         <Line
           key={`mh-${j}`}
           points={[msX * minorCellPx, j * minorCellPx, meX * minorCellPx, j * minorCellPx]}
-          stroke="rgba(255,255,255,0.02)"
+          stroke="rgba(0,0,0,0.025)"
           strokeWidth={0.5}
           listening={false}
         />
@@ -103,9 +103,9 @@ export function GridLayer({ width, height, zoom, panX, panY }: GridLayerProps) {
   // Origin crosshair (0,0)
   const originLen = Math.max(width, height) * 2;
   elements.push(
-    <Line key="origin-v" points={[0, -originLen, 0, originLen]} stroke="#e8c840" strokeWidth={1.5} opacity={0.25} listening={false} />,
-    <Line key="origin-h" points={[-originLen, 0, originLen, 0]} stroke="#e8c840" strokeWidth={1.5} opacity={0.25} listening={false} />,
-    <Circle key="origin-dot" x={0} y={0} radius={4} fill="#e8c840" opacity={0.4} listening={false} />,
+    <Line key="origin-v" points={[0, -originLen, 0, originLen]} stroke="#F2A900" strokeWidth={1.5} opacity={0.35} listening={false} />,
+    <Line key="origin-h" points={[-originLen, 0, originLen, 0]} stroke="#F2A900" strokeWidth={1.5} opacity={0.35} listening={false} />,
+    <Circle key="origin-dot" x={0} y={0} radius={4} fill="#F2A900" opacity={0.5} listening={false} />,
   );
 
   // Axis labels (every 5m)
@@ -127,7 +127,7 @@ export function GridLayer({ width, height, zoom, panX, panY }: GridLayerProps) {
           y={3}
           text={`${m}m`}
           fontSize={9}
-          fill="rgba(255,255,255,0.15)"
+          fill="rgba(0,0,0,0.2)"
           listening={false}
         />
       );
@@ -142,7 +142,7 @@ export function GridLayer({ width, height, zoom, panX, panY }: GridLayerProps) {
           y={j * labelCellPx + 3}
           text={`${m}m`}
           fontSize={9}
-          fill="rgba(255,255,255,0.15)"
+          fill="rgba(0,0,0,0.2)"
           listening={false}
         />
       );
@@ -163,7 +163,7 @@ export function GridLayer({ width, height, zoom, panX, panY }: GridLayerProps) {
             x={i * cellPx}
             y={j * cellPx}
             radius={Math.max(1.5, 2 * zoom)}
-            fill="rgba(232, 200, 64, 0.15)"
+            fill="rgba(242, 169, 0, 0.2)"
             listening={false}
           />
         );

@@ -1,16 +1,18 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   X, Download, Package, Ruler, Plus, Minus,
   ChevronDown, ChevronRight, RotateCw, Trash2, Move,
+  Share2, AlertTriangle, CheckCircle2, Copy, FileText,
 } from 'lucide-react';
 import { useEditorStore } from '../stores/editorStore';
 import { closestLedger } from '../engine/scaffoldGenerator';
 import { ScaffoldViewer3D } from '../canvas/renderers/ScaffoldViewer3D';
 
+
 // ==========================================
 // CONSTANTES METIER
 // ==========================================
-const HAUTEURS_PLANCHER = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22];
+const HAUTEURS_PLANCHER = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const MOISE_LENGTHS = [0.73, 1.09, 1.40, 1.57, 2.07, 2.57, 3.07];
 
 const CATEGORY_ORDER = [
@@ -18,6 +20,94 @@ const CATEGORY_ORDER = [
   'Plateformes', 'Plinthes', 'Consoles', 'Echelles', 'Acces exterieur',
   'Colliers', 'Tubes', 'Verins', 'Verins de base',
 ];
+
+// ==========================================
+// AUTO-SAVE
+// ==========================================
+const AUTOSAVE_KEY = 'echaf3d-autosave';
+
+function autoSave(config: PlannerConfig, chantierName: string) {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ config, chantierName, savedAt: Date.now() }));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function autoLoad(): { config: PlannerConfig; chantierName: string } | null {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data?.config?.mailles?.length > 0) return data;
+  } catch { /* corrupted — ignore */ }
+  return null;
+}
+
+// ==========================================
+// ALERTES SECURITE
+// ==========================================
+interface SafetyAlert {
+  level: 'warning' | 'danger';
+  message: string;
+}
+
+function computeSafetyAlerts(pc: PlannerConfig): SafetyAlert[] {
+  const alerts: SafetyAlert[] = [];
+  const maxH = Math.max(...pc.mailles.map(m => m.hauteurPlancher));
+  const minDim = Math.min(
+    ...pc.mailles.map(m => Math.min(closestLedger(m.longueur), closestLedger(m.largeur)))
+  );
+  const ratio = maxH / minDim;
+
+  // H/L ratio — norme NF EN 12811
+  if (ratio > 4 && !needsSapine(pc)) {
+    alerts.push({ level: 'danger', message: `Ratio H/L = ${ratio.toFixed(1)} > 4 — amarrage ou sapine obligatoire` });
+  }
+
+  // Poids total
+  const totalWeight = pc.mailles.length > 0 ? computeFullBOM(pc).reduce((s, it) => s + it.count * it.unitWeight, 0) : 0;
+  if (totalWeight > 5000) {
+    alerts.push({ level: 'warning', message: `Poids total ${Math.round(totalWeight)} kg — prevoir grutage ou manutention` });
+  }
+
+  // Hauteur > 8m sans acces
+  if (maxH > 8 && !pc.mailles.some(m => m.accesExterieur) && !pc.echelle) {
+    alerts.push({ level: 'danger', message: `Hauteur ${maxH}m sans echelle ni acces exterieur` });
+  }
+
+  return alerts;
+}
+
+// ==========================================
+// RESUME CHANTIER (pour partage)
+// ==========================================
+function generateShareText(pc: PlannerConfig, chantierName: string, bomItems: BOMItem[]): string {
+  const maxH = Math.max(...pc.mailles.map(m => m.hauteurPlancher));
+  const totalPieces = bomItems.reduce((s, it) => s + it.count, 0);
+  const totalWeight = Math.round(bomItems.reduce((s, it) => s + it.count * it.unitWeight, 0) * 10) / 10;
+  const nbLevels = computeLevelsFor(maxH).length;
+  const surface = pc.mailles.reduce((s, m) => s + closestLedger(m.longueur) * closestLedger(m.largeur), 0);
+
+  let text = `ECHAF' 3D — ${chantierName || 'Sans nom'}\n`;
+  text += `${'—'.repeat(30)}\n`;
+  text += `${pc.mailles.length} maille${pc.mailles.length > 1 ? 's' : ''}\n`;
+  text += `Hauteur: ${maxH}m | ${nbLevels} niveau${nbLevels > 1 ? 'x' : ''}\n`;
+  text += `Surface: ${Math.round(surface * 100) / 100} m2\n`;
+  text += `Total: ${totalPieces} pieces | ${totalWeight} kg\n`;
+  text += `${'—'.repeat(30)}\n`;
+
+  // Top categories
+  const catMap: Record<string, { count: number; weight: number }> = {};
+  for (const it of bomItems) {
+    if (!catMap[it.category]) catMap[it.category] = { count: 0, weight: 0 };
+    catMap[it.category].count += it.count;
+    catMap[it.category].weight += it.count * it.unitWeight;
+  }
+  for (const [cat, { count, weight }] of Object.entries(catMap)) {
+    text += `${cat}: ${count} pcs (${Math.round(weight)} kg)\n`;
+  }
+  text += `\nGenere par Echaf' 3D`;
+  return text;
+}
 
 // ==========================================
 // TYPES
@@ -53,10 +143,13 @@ export interface DeportSides {
   xmax: boolean; // longueur droite
 }
 
+export function maxScaffoldHeight(): number {
+  return 22;
+}
+
 export interface PlannerConfig {
   hauteurPlancher: number;
   mailles: MailleConfig[];
-  type: 'interieur' | 'exterieur';
   verinage: boolean;
   echelle: boolean;
 }
@@ -74,12 +167,12 @@ function computeLevelsFor(h: number): number[] {
   return l.sort((a, b) => a - b);
 }
 
-// Sapine (contreventement) necessaire quand : exterieur + H/L > 4
+// Sapine (contreventement) necessaire quand : H/L > 4
 // Nombre de niveaux de diagonales de sapine = ceil(hauteur / 4)
 export function needsSapine(pc: PlannerConfig): boolean {
   const minDim = Math.min(...pc.mailles.map(m => closestLedger(m.largeur)), ...pc.mailles.map(m => closestLedger(m.longueur)));
   const maxH = globalMaxH(pc);
-  return pc.type === 'exterieur' && maxH / minDim > 4;
+  return maxH / minDim > 4;
 }
 
 export function sapineLevels(pc: PlannerConfig): number {
@@ -490,9 +583,21 @@ function LayoutEditor({
   setSelected: (id: string | null) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [dragging, setDragging] = useState<{ id: string; startMx: number; startMz: number; origX: number; origZ: number } | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
 
-  const SCALE = 100; // px par metre
+  // Pinch-to-zoom state
+  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
+
+  // Drag state : on gèle le système de coordonnées au début du drag
+  const [dragging, setDragging] = useState<{
+    id: string;
+    startClientX: number;
+    startClientY: number;
+    startMailleX: number;
+    startMailleZ: number;
+    pxPerMeter: number; // pixels écran par mètre monde (gelé)
+  } | null>(null);
+
   const SNAP = 0.01; // snap 1cm
   const PAD = 40; // padding en px
 
@@ -501,33 +606,30 @@ function LayoutEditor({
     [config.mailles],
   );
 
-  // Bornes pour auto-scale
   const bounds = useMemo(() => {
-    if (rects.length === 0) return { minX: 0, minZ: 0, maxX: 3, maxZ: 2 };
+    if (rects.length === 0) return { minX: -5, minZ: -5, maxX: 5, maxZ: 5 };
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
     for (const { r } of rects) {
       minX = Math.min(minX, r.x1); minZ = Math.min(minZ, r.z1);
       maxX = Math.max(maxX, r.x2); maxZ = Math.max(maxZ, r.z2);
     }
-    return { minX: minX - 0.5, minZ: minZ - 0.5, maxX: maxX + 0.5, maxZ: maxZ + 0.5 };
+    const margin = Math.max((maxX - minX), (maxZ - minZ), 3) * 0.5;
+    return { minX: minX - margin, minZ: minZ - margin, maxX: maxX + margin, maxZ: maxZ + margin };
   }, [rects]);
 
   const worldW = bounds.maxX - bounds.minX;
   const worldH = bounds.maxZ - bounds.minZ;
 
-  // Adapter le scale pour tenir dans la zone
-  const containerW = 252; // largeur du panneau config - padding
-  const containerH = 200;
-  const fitScale = Math.min((containerW - PAD) / worldW, (containerH - PAD) / worldH, SCALE);
-  const sc = Math.max(fitScale, 30);
+  const containerW = 320;
+  const containerH = 300;
+  const baseScale = Math.max(Math.min((containerW - PAD) / worldW, (containerH - PAD) / worldH, 100), 30);
+  const sc = baseScale * zoomLevel;
 
   const svgW = worldW * sc + PAD * 2;
   const svgH = worldH * sc + PAD * 2;
 
   const toSvgX = (wx: number) => (wx - bounds.minX) * sc + PAD;
   const toSvgY = (wz: number) => (wz - bounds.minZ) * sc + PAD;
-  const toWorldX = (sx: number) => (sx - PAD) / sc + bounds.minX;
-  const toWorldZ = (sy: number) => (sy - PAD) / sc + bounds.minZ;
 
   const snapVal = (v: number) => Math.round(v / SNAP) * SNAP;
 
@@ -539,7 +641,7 @@ function LayoutEditor({
     const md = maille.rotation === 0 ? w : l;
     let bestX = snapVal(mx);
     let bestZ = snapVal(mz);
-    const threshold = 0.15; // seuil de snap en metres
+    const threshold = 0.08; // seuil de snap en metres
 
     for (const { m, r } of rects) {
       if (m.id === dragId) continue;
@@ -557,30 +659,39 @@ function LayoutEditor({
     return { x: bestX, z: bestZ };
   }, [rects]);
 
-  // --- Helpers pour convertir client coords en SVG coords ---
-  const clientToSvg = (clientX: number, clientY: number) => {
-    const svg = svgRef.current!;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX; pt.y = clientY;
-    return pt.matrixTransform(svg.getScreenCTM()!.inverse());
+  // Calcule le ratio pixels-écran / mètres-monde à l'instant T
+  const getPxPerMeter = () => {
+    const svg = svgRef.current;
+    if (!svg) return sc;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return sc;
+    // ctm.a = scale X du SVG user units → screen pixels
+    // sc = SVG user units par mètre monde
+    return ctm.a * sc;
   };
 
   const startDrag = (clientX: number, clientY: number, id: string) => {
     setSelected(id);
-    const svgPt = clientToSvg(clientX, clientY);
     const maille = config.mailles.find(m => m.id === id)!;
-    setDragging({ id, startMx: toWorldX(svgPt.x), startMz: toWorldZ(svgPt.y), origX: maille.x, origZ: maille.z });
+    setDragging({
+      id,
+      startClientX: clientX,
+      startClientY: clientY,
+      startMailleX: maille.x,
+      startMailleZ: maille.z,
+      pxPerMeter: getPxPerMeter(),
+    });
   };
 
   const moveDrag = (clientX: number, clientY: number) => {
     if (!dragging) return;
-    const svgPt = clientToSvg(clientX, clientY);
-    const wx = toWorldX(svgPt.x);
-    const wz = toWorldZ(svgPt.y);
-    const dx = (wx - dragging.startMx) * 0.5;
-    const dz = (wz - dragging.startMz) * 0.5;
+    // Delta en pixels écran → delta en mètres monde (ratio gelé)
+    const dxPx = clientX - dragging.startClientX;
+    const dyPx = clientY - dragging.startClientY;
+    const rawX = dragging.startMailleX + dxPx / dragging.pxPerMeter;
+    const rawZ = dragging.startMailleZ + dyPx / dragging.pxPerMeter;
     const maille = config.mailles.find(m => m.id === dragging.id)!;
-    const snapped = snapToEdges(dragging.origX + dx, dragging.origZ + dz, dragging.id, maille);
+    const snapped = snapToEdges(rawX, rawZ, dragging.id, maille);
     setConfig(prev => ({
       ...prev,
       mailles: prev.mailles.map(m => m.id === dragging.id ? { ...m, x: snapped.x, z: snapped.z } : m),
@@ -589,6 +700,7 @@ function LayoutEditor({
 
   const handleMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    e.preventDefault();
     if (e.detail === 2) {
       setConfig(prev => ({
         ...prev,
@@ -602,21 +714,59 @@ function LayoutEditor({
   const handleMouseMove = (e: React.MouseEvent) => moveDrag(e.clientX, e.clientY);
   const handleMouseUp = () => setDragging(null);
 
-  // --- Touch events pour mobile ---
+  // --- Touch events pour mobile (drag + pinch-to-zoom unifié) ---
+  const lastTap = useRef<{ id: string; time: number }>({ id: '', time: 0 });
   const handleTouchStart = (e: React.TouchEvent, id: string) => {
-    e.stopPropagation();
-    const touch = e.touches[0];
-    startDrag(touch.clientX, touch.clientY, id);
+    // Ne pas stopper la propagation pour que le pinch fonctionne
+    // Double-tap pour tourner
+    const now = Date.now();
+    if (lastTap.current.id === id && now - lastTap.current.time < 350) {
+      setConfig(prev => ({
+        ...prev,
+        mailles: prev.mailles.map(m => m.id === id ? { ...m, rotation: m.rotation === 0 ? 90 : 0 as 0 | 90 } : m),
+      }));
+      lastTap.current = { id: '', time: 0 };
+      return;
+    }
+    lastTap.current = { id, time: now };
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      startDrag(touch.clientX, touch.clientY, id);
+    }
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!dragging) return;
-    e.preventDefault(); // empeche le scroll pendant le drag
-    const touch = e.touches[0];
-    moveDrag(touch.clientX, touch.clientY);
+  // Gestion unifiée au niveau wrapper : pinch (2 doigts) + drag (1 doigt)
+  const wrapperTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      setDragging(null);
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchRef.current = { startDist: Math.sqrt(dx * dx + dy * dy), startZoom: zoomLevel };
+    }
   };
 
-  const handleTouchEnd = () => setDragging(null);
+  const wrapperTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // Pinch zoom
+      if (!pinchRef.current) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchRef.current = { startDist: Math.sqrt(dx * dx + dy * dy), startZoom: zoomLevel };
+      }
+      e.preventDefault();
+      setDragging(null);
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / pinchRef.current.startDist;
+      setZoomLevel(Math.max(0.2, Math.min(12, pinchRef.current.startZoom * scale)));
+    } else if (e.touches.length === 1 && dragging) {
+      e.preventDefault();
+      moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  const wrapperTouchEnd = () => { setDragging(null); pinchRef.current = null; };
 
   // Grille
   const gridLines: React.ReactElement[] = [];
@@ -631,18 +781,22 @@ function LayoutEditor({
   }
 
   return (
+    <div className="relative"
+      style={{ touchAction: 'none' }}
+      onTouchStart={wrapperTouchStart}
+      onTouchMove={wrapperTouchMove}
+      onTouchEnd={wrapperTouchEnd}
+      onTouchCancel={wrapperTouchEnd}
+    >
     <svg
       ref={svgRef}
       width={svgW} height={svgH}
-      className="bg-[#f0f0f4] rounded-lg border border-black/[0.06] cursor-crosshair"
-      style={{ maxWidth: '100%', maxHeight: `${containerH}px` }}
+      className="bg-[#f0f0f4] rounded-lg border border-black/[0.06]"
+      style={{ maxWidth: '100%', maxHeight: `${containerH}px`, touchAction: 'none' }}
       viewBox={`0 0 ${svgW} ${svgH}`}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
       onClick={() => { if (!dragging) setSelected(null); }}
     >
       {gridLines}
@@ -657,13 +811,15 @@ function LayoutEditor({
         const w = (r.x2 - r.x1) * sc;
         const h = (r.z2 - r.z1) * sc;
         const acCol = (side: string) => m.accesExterieur && m.accesExterieurSide === side ? '#22c55e' : '#F2A900';
+        const fillColor = m.aVide ? 'url(#hatch)' : isSel ? 'rgba(242,169,0,0.12)' : 'rgba(0,0,0,0.04)';
+        const strokeColor = isSel ? '#F2A900' : m.aVide ? 'rgba(239,68,68,0.3)' : 'rgba(0,0,0,0.15)';
         return (
           <g key={m.id} onMouseDown={(e) => handleMouseDown(e, m.id)} onTouchStart={(e) => handleTouchStart(e, m.id)}>
             <rect
               x={toSvgX(r.x1)} y={toSvgY(r.z1)} width={w} height={h}
               rx={3}
-              fill={m.aVide ? 'url(#hatch)' : isSel ? 'rgba(242,169,0,0.12)' : 'rgba(0,0,0,0.04)'}
-              stroke={isSel ? '#F2A900' : m.aVide ? 'rgba(239,68,68,0.3)' : 'rgba(0,0,0,0.15)'}
+              fill={fillColor}
+              stroke={strokeColor}
               strokeWidth={isSel ? 2 : 1}
               className="cursor-move"
             />
@@ -685,6 +841,18 @@ function LayoutEditor({
         );
       })}
     </svg>
+    {/* Boutons zoom +/- (gros pour tactile) */}
+    <div className="absolute bottom-2 right-2 flex flex-col gap-1.5">
+      <button
+        onClick={() => setZoomLevel(z => Math.min(z * 2, 12))}
+        className="w-10 h-10 rounded-lg bg-white/90 border border-black/10 text-lg font-bold text-[#1d1d1f] active:bg-[#F2A900]/10 shadow-sm flex items-center justify-center select-none"
+      >+</button>
+      <button
+        onClick={() => setZoomLevel(z => Math.max(z / 2, 0.2))}
+        className="w-10 h-10 rounded-lg bg-white/90 border border-black/10 text-lg font-bold text-[#1d1d1f] active:bg-[#F2A900]/10 shadow-sm flex items-center justify-center select-none"
+      >−</button>
+    </div>
+    </div>
   );
 }
 
@@ -692,13 +860,14 @@ function LayoutEditor({
 // CONFIG PANEL (LEFT)
 // ==========================================
 function ConfigPanel({
-  config, setConfig, bomItems,
+  config, setConfig, bomItems, selected, setSelected,
 }: {
   config: PlannerConfig;
   setConfig: React.Dispatch<React.SetStateAction<PlannerConfig>>;
   bomItems: BOMItem[];
+  selected: string | null;
+  setSelected: (id: string | null) => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
 
   const totalPieces = bomItems.reduce((s, it) => s + it.count, 0);
   const totalWeight = Math.round(bomItems.reduce((s, it) => s + it.count * it.unitWeight, 0) * 10) / 10;
@@ -708,12 +877,23 @@ function ConfigPanel({
   const addMaille = () => {
     const last = config.mailles[config.mailles.length - 1];
     const lastRect = last ? getMailleRect(last) : null;
-    const newX = lastRect ? lastRect.x2 : 0;
-    const newZ = lastRect ? lastRect.z1 : 0;
+    let newX = lastRect ? lastRect.x2 : 0;
+    let newZ = lastRect ? lastRect.z1 : 0;
     const id = String(nextId.current++);
+    const longueur = last?.longueur || 2.07;
+    const largeur = last?.largeur || 0.73;
+
+    // Verifier si la nouvelle maille chevauche une tour et decaler si besoin
+    const testRect = (): MailleRect => {
+      const l = closestLedger(longueur);
+      const w = closestLedger(largeur);
+      return { id, x1: newX, z1: newZ, x2: newX + l, z2: newZ + w };
+    };
+    // Pas de blocage — placement libre partout
+
     setConfig(prev => ({
       ...prev,
-      mailles: [...prev.mailles, { id, longueur: last?.longueur || 2.07, largeur: last?.largeur || 0.73, x: newX, z: newZ, rotation: 0, hauteurPlancher: last?.hauteurPlancher || 6, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens}],
+      mailles: [...prev.mailles, { id, longueur, largeur, x: newX, z: newZ, rotation: 0, hauteurPlancher: last?.hauteurPlancher || 2, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin' as AccesSide, accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens}],
     }));
     setSelected(id);
   };
@@ -758,18 +938,18 @@ function ConfigPanel({
             <label className="text-[11px] text-[#86868b]">
               Mailles ({config.mailles.length})
             </label>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <button onClick={rotateMaille} disabled={!selected}
-                className="w-6 h-6 rounded flex items-center justify-center bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15] disabled:opacity-30" title="Tourner">
-                <RotateCw size={11} />
+                className="w-11 h-11 rounded-xl flex items-center justify-center bg-black/[0.03] border border-black/[0.1] text-[#86868b] active:bg-black/[0.08] disabled:opacity-30" title="Tourner">
+                <RotateCw size={18} />
               </button>
               <button onClick={removeMaille} disabled={!selected || config.mailles.length <= 1}
-                className="w-6 h-6 rounded flex items-center justify-center bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15] disabled:opacity-30" title="Supprimer">
-                <Trash2 size={11} />
+                className="w-11 h-11 rounded-xl flex items-center justify-center bg-red-500/5 border border-red-500/20 text-red-400 active:bg-red-500/10 disabled:opacity-30" title="Supprimer">
+                <Trash2 size={18} />
               </button>
               <button onClick={addMaille}
-                className="w-6 h-6 rounded flex items-center justify-center bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15]" title="Ajouter">
-                <Plus size={11} />
+                className="w-11 h-11 rounded-xl flex items-center justify-center bg-[#F2A900]/10 border border-[#F2A900]/30 text-[#c88800] active:bg-[#F2A900]/20" title="Ajouter">
+                <Plus size={18} />
               </button>
             </div>
           </div>
@@ -777,7 +957,7 @@ function ConfigPanel({
           <LayoutEditor config={config} setConfig={setConfig} selected={selected} setSelected={setSelected} />
 
           <p className="text-[9px] text-[#aeaeb2] mt-1">
-            <Move size={9} className="inline mr-0.5" /> Clic pour selectionner &bull; Glisser pour deplacer &bull; Double-clic pour tourner
+            <Move size={9} className="inline mr-0.5" /> Appuyer pour selectionner &bull; Glisser pour deplacer &bull; Double-tap pour tourner
           </p>
         </div>
 
@@ -799,33 +979,33 @@ function ConfigPanel({
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-[#86868b] block mb-1">Longueur</label>
-              <div className="flex flex-wrap gap-1">
+              <label className="text-[10px] text-[#86868b] block mb-1.5">Longueur</label>
+              <div className="flex flex-wrap gap-1.5">
                 {MOISE_LENGTHS.map((l) => (
                   <button key={`l-${l}`} onClick={() => updateMaille({ longueur: l })}
-                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.longueur === l ? 'bg-[#F2A900]/10 border border-[#F2A900]/30 text-[#c88800]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
+                    className={`min-w-[44px] px-2.5 py-2 text-[12px] rounded-lg transition-all ${sm.longueur === l ? 'bg-[#F2A900]/10 border-2 border-[#F2A900]/40 text-[#c88800] font-semibold' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b] active:bg-black/[0.06]'}`}>
                     {l}m
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-[#86868b] block mb-1">Profondeur</label>
-              <div className="flex flex-wrap gap-1">
+              <label className="text-[10px] text-[#86868b] block mb-1.5">Profondeur</label>
+              <div className="flex flex-wrap gap-1.5">
                 {MOISE_LENGTHS.map((l) => (
                   <button key={`w-${l}`} onClick={() => updateMaille({ largeur: l })}
-                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/10 border border-[#3b82f6]/30 text-[#3b82f6]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
+                    className={`min-w-[44px] px-2.5 py-2 text-[12px] rounded-lg transition-all ${sm.largeur === l ? 'bg-[#3b82f6]/10 border-2 border-[#3b82f6]/40 text-[#3b82f6] font-semibold' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b] active:bg-black/[0.06]'}`}>
                     {l}m
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-[9px] text-[#86868b] block mb-1">Hauteur plancher</label>
+              <label className="text-[10px] text-[#86868b] block mb-1.5">Hauteur plancher</label>
               <div className="flex flex-wrap gap-1">
                 {HAUTEURS_PLANCHER.map((h) => (
                   <button key={`h-${h}`} onClick={() => updateMaille({ hauteurPlancher: h })}
-                    className={`px-1.5 py-0.5 text-[9px] rounded transition-all ${sm.hauteurPlancher === h ? 'bg-[#ef4444]/10 border border-[#ef4444]/30 text-[#ef4444]' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b]'}`}>
+                    className={`min-w-[40px] px-2 py-2 text-[12px] rounded-lg transition-all ${sm.hauteurPlancher === h ? 'bg-[#ef4444]/10 border-2 border-[#ef4444]/40 text-[#ef4444] font-semibold' : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b] active:bg-black/[0.06]'}`}>
                     {h}m
                   </button>
                 ))}
@@ -931,28 +1111,11 @@ function ConfigPanel({
         <div className="space-y-3">
           <label className="text-[10px] text-[#aeaeb2] uppercase tracking-wider font-semibold block">Options generales</label>
 
-          {/* Type interieur/exterieur */}
-          <div>
-            <label className="text-[12px] text-[#86868b] block mb-1.5">Type d'echafaudage</label>
-            <div className="flex gap-1.5">
-              {(['interieur', 'exterieur'] as const).map((t) => (
-                <button key={t}
-                  onClick={() => setConfig(p => ({ ...p, type: t }))}
-                  className={`flex-1 py-1.5 text-[11px] rounded-lg transition-all font-medium text-center ${
-                    config.type === t
-                      ? 'bg-[#F2A900]/10 border border-[#F2A900]/30 text-[#c88800]'
-                      : 'bg-black/[0.03] border border-black/[0.1] text-[#86868b] hover:border-black/[0.15]'
-                  }`}>
-                  {t === 'interieur' ? 'Interieur' : 'Exterieur'}
-                </button>
-              ))}
-            </div>
-            {needsSapine(config) && (
-              <p className="text-[9px] text-[#c88800]/70 mt-1">
-                Sapine (contreventement) ajoutee automatiquement — {sapineLevels(config)} niveau{sapineLevels(config) > 1 ? 'x' : ''} de diagonales
-              </p>
-            )}
-          </div>
+          {needsSapine(config) && (
+            <p className="text-[9px] text-[#c88800]/70 mt-1">
+              Sapine (contreventement) ajoutee automatiquement — {sapineLevels(config)} niveau{sapineLevels(config) > 1 ? 'x' : ''} de diagonales
+            </p>
+          )}
 
           {/* Verinage */}
           <div className="flex items-center justify-between">
@@ -975,14 +1138,24 @@ function ConfigPanel({
       </div>
 
       {/* Summary */}
-      <div className="px-4 py-3 border-t border-black/[0.06] bg-black/[0.01] space-y-1">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-[#86868b]">Pieces</span>
-          <span className="font-semibold text-[#c88800]">{totalPieces}</span>
-        </div>
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-[#86868b]">Poids total</span>
-          <span className="font-semibold text-[#c88800]">{totalWeight} kg</span>
+      <div className="px-4 py-3 border-t border-black/[0.06] bg-black/[0.01]">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-[#86868b]">Pieces</span>
+            <span className="font-semibold text-[#c88800]">{totalPieces}</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-[#86868b]">Poids</span>
+            <span className="font-semibold text-[#c88800]">{totalWeight} kg</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-[#86868b]">Surface</span>
+            <span className="font-medium text-[#6e6e73]">{Math.round(config.mailles.reduce((s, m) => s + closestLedger(m.longueur) * closestLedger(m.largeur), 0) * 100) / 100} m2</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-[#86868b]">Niveaux</span>
+            <span className="font-medium text-[#6e6e73]">{computeLevelsFor(Math.max(...config.mailles.map(m => m.hauteurPlancher))).length}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -995,9 +1168,6 @@ function ConfigPanel({
 function CanvasPanel({ plannerConfig }: { plannerConfig: PlannerConfig }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden w-full">
-      <div className="hidden sm:flex items-center gap-2 px-4 py-2 border-b border-black/[0.06] bg-black/[0.01]">
-        <span className="text-[10px] text-[#aeaeb2]">Clic gauche : tourner &bull; Molette : zoom &bull; Clic droit : deplacer</span>
-      </div>
       <div className="flex-1 relative">
         <ScaffoldViewer3D plannerConfig={plannerConfig} />
       </div>
@@ -1008,7 +1178,7 @@ function CanvasPanel({ plannerConfig }: { plannerConfig: PlannerConfig }) {
 // ==========================================
 // BOM PANEL (RIGHT)
 // ==========================================
-function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
+function BOMPanel({ bomItems, chantierName }: { bomItems: BOMItem[]; chantierName: string }) {
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   // Ajustements manuels par nom de piece (key = item.name)
   const [adjustments, setAdjustments] = useState<Record<string, number>>({});
@@ -1068,7 +1238,8 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
   const totalWeight = Math.round(adjustedItems.reduce((s, it) => s + it.count * it.unitWeight, 0) * 10) / 10;
 
   const handleExportCSV = () => {
-    const lines = ['Categorie;Piece;Quantite;Poids unitaire (kg);Poids total (kg)'];
+    const name = chantierName || 'echafaudage';
+    const lines = [`Chantier: ${name}`, '', 'Categorie;Piece;Quantite;Poids unitaire (kg);Poids total (kg)'];
     for (const [cat, items] of grouped) {
       for (const item of items) {
         lines.push(`${cat};${item.name};${item.count};${item.unitWeight};${Math.round(item.count * item.unitWeight * 10) / 10}`);
@@ -1077,27 +1248,48 @@ function BOMPanel({ bomItems }: { bomItems: BOMItem[] }) {
     lines.push(`;;${totalPieces};;${totalWeight}`);
     const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'approvisionnement-echafaudage.csv'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `appro-${name.replace(/\s+/g, '-')}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
     <div className="w-full sm:w-[340px] sm:min-w-[340px] glass-panel sm:border-l border-black/[0.06] flex flex-col overflow-hidden">
-      <div className="px-4 py-3 border-b border-black/[0.06] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Package size={14} className="text-[#3b82f6]" />
-          <span className="text-xs font-semibold">Feuille de calcul</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {(Object.keys(adjustments).length > 0 || checkedItems.size > 0) && (
-            <button onClick={() => { setAdjustments({}); setCheckedItems(new Set()); }} className="glass-button text-[10px] py-1 px-2 text-orange-400">
-              Reset
+      <div className="px-4 py-3 border-b border-black/[0.06]">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <Package size={14} className="text-[#3b82f6]" />
+            <span className="text-xs font-semibold">Approvisionnement</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {(Object.keys(adjustments).length > 0 || checkedItems.size > 0) && (
+              <button onClick={() => { setAdjustments({}); setCheckedItems(new Set()); }} className="glass-button text-[10px] py-1 px-2 text-orange-400">
+                Reset
+              </button>
+            )}
+            <button onClick={handleExportCSV} className="glass-button text-[10px] py-1.5 px-2.5">
+              <Download size={12} /> CSV
             </button>
-          )}
-          <button onClick={handleExportCSV} className="glass-button text-[10px] py-1 px-2">
-            <Download size={11} /> CSV
-          </button>
+          </div>
         </div>
+        {/* Barre de progression checklist */}
+        {checkedItems.size > 0 && (() => {
+          const totalTypes = adjustedItems.filter(it => it.count > 0).length;
+          const checkedCount = adjustedItems.filter(it => it.count > 0 && checkedItems.has(it.name)).length;
+          const pct = totalTypes > 0 ? Math.round(checkedCount / totalTypes * 100) : 0;
+          return (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-black/[0.05] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${pct}%`, background: pct === 100 ? '#22c55e' : '#F2A900' }}
+                />
+              </div>
+              <span className="text-[10px] tabular-nums font-medium" style={{ color: pct === 100 ? '#22c55e' : '#c88800' }}>
+                {checkedCount}/{totalTypes} {pct === 100 ? 'Complet' : `${pct}%`}
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -1203,60 +1395,164 @@ type MobileTab = 'config' | '3d' | 'bom';
 export function PlannerView() {
   const { showPlanner, setShowPlanner } = useEditorStore();
   const [mobileTab, setMobileTab] = useState<MobileTab>('config');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [chantierName, setChantierName] = useState('');
+  const [showShareToast, setShowShareToast] = useState(false);
+  const [editingName, setEditingName] = useState(false);
 
-  const [config, setConfig] = useState<PlannerConfig>({
-    hauteurPlancher: 6,
+  const defaultConfig: PlannerConfig = {
+    hauteurPlancher: 4,
     mailles: [
-      { id: 'a', longueur: 2.07, largeur: 0.73, x: 0, z: 0, rotation: 0, hauteurPlancher: 6, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
-      { id: 'b', longueur: 2.07, largeur: 0.73, x: closestLedger(2.07), z: 0, rotation: 0, hauteurPlancher: 6, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
+      { id: 'a', longueur: 3.07, largeur: 3.07, x: 0, z: 0, rotation: 0, hauteurPlancher: 4, aVide: false, accesExterieur: false, accesExterieurSide: 'zmin', accesExterieurPremierPalier: false, plancherSens: 'longueur' as PlancherSens, deport: false, deportLongueur: 0.73, deportSides: { zmin: false, zmax: false, xmin: false, xmax: false }, deportTousEtages: false, deportPlancherSens: 'longueur' as PlancherSens},
     ],
-    type: 'interieur',
     verinage: false,
     echelle: true,
+  };
+
+  // Restauration auto-save au premier rendu
+  const [config, setConfig] = useState<PlannerConfig>(() => {
+    const saved = autoLoad();
+    if (saved) return saved.config;
+    return defaultConfig;
   });
 
+  // Restaurer le nom du chantier
+  useEffect(() => {
+    const saved = autoLoad();
+    if (saved?.chantierName) setChantierName(saved.chantierName);
+  }, []);
+
+  // Auto-save a chaque modification
+  useEffect(() => {
+    autoSave(config, chantierName);
+  }, [config, chantierName]);
+
   const bomItems = useMemo(() => computeFullBOM(config), [config]);
+  const safetyAlerts = useMemo(() => computeSafetyAlerts(config), [config]);
 
   if (!showPlanner) return null;
 
   const totalPieces = bomItems.reduce((s, it) => s + it.count, 0);
   const totalWeight = Math.round(bomItems.reduce((s, it) => s + it.count * it.unitWeight, 0) * 10) / 10;
+  const maxH = Math.max(...config.mailles.map(m => m.hauteurPlancher));
+  const nbLevels = computeLevelsFor(maxH).length;
+  const surface = Math.round(config.mailles.reduce((s, m) => s + closestLedger(m.longueur) * closestLedger(m.largeur), 0) * 100) / 100;
+
+  const handleShare = async () => {
+    const text = generateShareText(config, chantierName, bomItems);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Echaf' 3D — ${chantierName || 'Mon echaf'}`, text });
+        return;
+      } catch { /* user cancelled or not supported */ }
+    }
+    // Fallback : copier dans le presse-papier
+    try {
+      await navigator.clipboard.writeText(text);
+      setShowShareToast(true);
+      setTimeout(() => setShowShareToast(false), 2000);
+    } catch { /* clipboard not available */ }
+  };
+
+  const handleReset = () => {
+    if (!confirm('Nouveau chantier ? La configuration actuelle sera effacee.')) return;
+    setConfig(defaultConfig);
+    setChantierName('');
+    setSelected(null);
+  };
 
   const tabs: { id: MobileTab; label: string }[] = [
-    { id: 'config', label: "Crée ton echaf'" },
-    { id: '3d', label: '3D' },
-    { id: 'bom', label: 'Appro' },
+    { id: 'config', label: "Config" },
+    { id: '3d', label: 'Vue 3D' },
+    { id: 'bom', label: `Appro (${totalPieces})` },
   ];
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#f5f5f7] animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 border-b border-black/[0.06] bg-white/80 backdrop-blur-xl">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/sixty/Orano_logo.svg/120px-Orano_logo.svg.png" alt="Orano" className="h-6 sm:h-7 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          <div className="min-w-0">
-            <h1 className="text-xs sm:text-sm font-semibold text-[#1d1d1f] truncate tracking-tight">Echaf' Belleville</h1>
+      <div className="flex items-center justify-between px-3 sm:px-5 py-2 border-b border-black/[0.06] bg-white/80 backdrop-blur-xl">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              {editingName ? (
+                <input
+                  autoFocus
+                  value={chantierName}
+                  onChange={e => setChantierName(e.target.value)}
+                  onBlur={() => setEditingName(false)}
+                  onKeyDown={e => { if (e.key === 'Enter') setEditingName(false); }}
+                  placeholder="Nom du chantier..."
+                  className="text-xs sm:text-sm font-semibold text-[#1d1d1f] bg-[#F2A900]/5 border border-[#F2A900]/30 rounded-md px-2 py-0.5 w-full outline-none"
+                />
+              ) : (
+                <button onClick={() => setEditingName(true)} className="text-left min-w-0 group">
+                  <h1 className="text-xs sm:text-sm font-semibold text-[#1d1d1f] truncate tracking-tight">
+                    {chantierName || <span className="text-[#aeaeb2] italic">Nom du chantier...</span>}
+                  </h1>
+                </button>
+              )}
+            </div>
             <p className="text-[8px] sm:text-[9px] text-[#86868b] truncate">
               {config.mailles.length} maille{config.mailles.length > 1 ? 's' : ''}
-              &bull; H{Math.max(...config.mailles.map(m => m.hauteurPlancher))}m
-              &bull; {totalPieces} pcs / {totalWeight} kg
+              &bull; H{maxH}m &bull; {nbLevels} niv.
+              &bull; {surface} m2
+              &bull; {totalWeight} kg
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowPlanner(false)}
-          className="p-1.5 rounded-lg hover:bg-black/[0.04] text-[#86868b] hover:text-[#1d1d1f] transition-colors shrink-0"
-        >
-          <X size={14} />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={handleShare}
+            className="p-2 rounded-lg bg-[#F2A900]/10 text-[#c88800] active:bg-[#F2A900]/20 transition-colors"
+            title="Partager"
+          >
+            <Share2 size={16} />
+          </button>
+          <button
+            onClick={handleReset}
+            className="p-2 rounded-lg hover:bg-black/[0.04] text-[#86868b] active:bg-black/[0.08] transition-colors"
+            title="Nouveau"
+          >
+            <FileText size={16} />
+          </button>
+          <button
+            onClick={() => setShowPlanner(false)}
+            className="p-2 rounded-lg hover:bg-black/[0.04] text-[#86868b] hover:text-[#1d1d1f] transition-colors"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
+
+      {/* Alertes securite */}
+      {safetyAlerts.length > 0 && (
+        <div className="px-3 py-1.5 bg-gradient-to-r from-amber-50 to-red-50 border-b border-amber-200/50 flex items-start gap-2 overflow-x-auto">
+          <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+          <div className="flex gap-2 text-[10px]">
+            {safetyAlerts.map((a, i) => (
+              <span key={i} className={`whitespace-nowrap px-2 py-0.5 rounded-full ${
+                a.level === 'danger' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {a.message}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Toast partage */}
+      {showShareToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-[#1d1d1f] text-white text-xs px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-fade-in">
+          <CheckCircle2 size={14} className="text-green-400" /> Copie dans le presse-papier
+        </div>
+      )}
 
       {/* Mobile tabs */}
       <div className="flex sm:hidden border-b border-black/[0.06] bg-white">
         {tabs.map((t) => (
           <button key={t.id}
             onClick={() => setMobileTab(t.id)}
-            className={`flex-1 py-2.5 text-[11px] font-medium transition-all ${
+            className={`flex-1 py-3 text-[12px] font-medium transition-all ${
               mobileTab === t.id
                 ? 'text-[#F2A900] border-b-2 border-[#F2A900] bg-[#F2A900]/5'
                 : 'text-[#86868b]'
@@ -1269,15 +1565,16 @@ export function PlannerView() {
       {/* Desktop: 3 colonnes | Mobile: tab active */}
       <div className="flex flex-1 overflow-hidden">
         <div className={`${mobileTab === 'config' ? 'flex' : 'hidden'} sm:flex w-full sm:w-auto`}>
-          <ConfigPanel config={config} setConfig={setConfig} bomItems={bomItems} />
+          <ConfigPanel config={config} setConfig={setConfig} bomItems={bomItems} selected={selected} setSelected={setSelected} />
         </div>
         <div className={`${mobileTab === '3d' ? 'flex' : 'hidden'} sm:flex flex-1`}>
           <CanvasPanel plannerConfig={config} />
         </div>
         <div className={`${mobileTab === 'bom' ? 'flex' : 'hidden'} sm:flex w-full sm:w-auto`}>
-          <BOMPanel bomItems={bomItems} />
+          <BOMPanel bomItems={bomItems} chantierName={chantierName} />
         </div>
       </div>
+
     </div>
   );
 }

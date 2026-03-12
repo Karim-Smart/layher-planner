@@ -28,9 +28,9 @@ const CLR = {
   toeboardSide: '#907828',
   rosette: '#d4a830',
   rosetteDark: '#b08820',
-  groundLine: '#555566',
-  ground: '#3a3a44',
-  dimText: '#888899',
+  groundLine: '#aeaeb2',
+  ground: '#d1d1d6',
+  dimText: '#86868b',
 };
 
 const TUBE_W = 5;
@@ -342,6 +342,21 @@ function PerspectiveView({ config, width, height }: { config: ScaffoldConfig; wi
     const [bx, by] = p(x, 0, 0);
     const [gx, gy] = pGround(x, 0);
 
+    // Cale jaune sous le verin
+    const caleW = JACK_W * 2.3;
+    const caleH = 2.5;
+    elements.push(
+      <Rect key={`jack-cale-${col}`}
+        x={gx - caleW / 2} y={gy} width={caleW} height={caleH}
+        fill="#F2A900" stroke="#c88800" strokeWidth={0.5} cornerRadius={0.5}
+      />,
+    );
+    elements.push(
+      <Rect key={`jack-cale-hl-${col}`}
+        x={gx - caleW / 2} y={gy} width={caleW} height={caleH * 0.4}
+        fill="#fff" opacity={0.3} cornerRadius={[0.5, 0.5, 0, 0]} listening={false}
+      />,
+    );
     // Plaque
     elements.push(
       <Rect key={`jack-plate-${col}`}
